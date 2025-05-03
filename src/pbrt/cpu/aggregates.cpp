@@ -1160,6 +1160,25 @@ KdTreeAggregate *KdTreeAggregate::Create(std::vector<Primitive> prims,
                                maxPrims, maxDepth);
 }
 
+GridAggregate::GridAggregate(std::vector<Primitive> p)
+    : primitives(std::move(p)) {
+
+}
+
+GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,
+    const ParameterDictionary &parameters) {
+    return new GridAggregate(std::move(prims));
+}
+
+pstd::optional<ShapeIntersection> GridAggregate::Intersect(const Ray &ray,
+                                                             Float rayTMax) const {
+    return {};
+}
+
+bool GridAggregate::IntersectP(const Ray &ray, Float raytMax) const {
+    return false;
+}
+
 Primitive CreateAccelerator(const std::string &name, std::vector<Primitive> prims,
                             const ParameterDictionary &parameters) {
     Primitive accel = nullptr;
@@ -1168,7 +1187,7 @@ Primitive CreateAccelerator(const std::string &name, std::vector<Primitive> prim
     else if (name == "kdtree")
         accel = KdTreeAggregate::Create(std::move(prims), parameters);
     else if (name == "grid") {
-        Devlog("using %s.", name);
+        Devlog("using the %s accelerator.", name);
         accel = KdTreeAggregate::Create(std::move(prims), parameters);
     }
     else

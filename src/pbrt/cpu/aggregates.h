@@ -104,6 +104,24 @@ class KdTreeAggregate {
     Bounds3f bounds;
 };
 
+// GridAggregate Definition
+class GridAggregate {
+  public:
+    // GridAggregate Public Methods
+    GridAggregate(std::vector<Primitive> p);
+    static GridAggregate *Create(std::vector<Primitive> prims,
+                                   const ParameterDictionary &parameters);
+    pstd::optional<ShapeIntersection> Intersect(const Ray &ray, Float tMax) const;
+
+    Bounds3f Bounds() const { return bounds; }
+
+    bool IntersectP(const Ray &ray, Float tMax) const;
+
+  private:
+    Bounds3f bounds;
+    std::vector<Primitive> primitives;
+};
+
 }  // namespace pbrt
 
 #endif  // PBRT_CPU_AGGREGATES_H
