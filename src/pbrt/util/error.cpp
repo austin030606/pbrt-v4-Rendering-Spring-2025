@@ -54,10 +54,39 @@ static void processError(const char *errorType, const FileLoc *loc, const char *
     }
 }
 
+static void processDevlog(const FileLoc *loc, const char *message) {
+    // Build up an entire formatted devlog string and print it all at once;
+    // this way, if multiple threads are printing messages at once, they
+    // don't get jumbled up...
+    std::string prefixString = BrightYellow("Devlog");
+
+    if (loc)
+        prefixString += ": " + loc->ToString();
+
+    prefixString += ": ";
+    prefixString += message;
+
+    // Print the devlog message (but not more than one time).
+    static std::string lastDevlog;
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (prefixString != lastDevlog) {
+        fprintf(stderr, "%s\n", prefixString.c_str());
+        LOG_VERBOSE("%s", prefixString);
+        lastDevlog = prefixString;
+    }
+}
+
 void Warning(const FileLoc *loc, const char *message) {
     if (quiet)
         return;
     processError("Warning", loc, message);
+}
+
+void Devlog(const FileLoc *loc, const char *message) {
+    if (quiet)
+        return;
+    processDevlog(loc, message);
 }
 
 void Error(const FileLoc *loc, const char *message) {

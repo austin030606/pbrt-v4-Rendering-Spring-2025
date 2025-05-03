@@ -312,6 +312,13 @@ inline std::string Yellow(const std::string &s) {
     return std::string(yellow) + s + std::string(reset);
 }
 
+inline std::string BrightYellow(const std::string &s) {
+    // https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit
+    const char *yellow = "\033[1m\033[38;5;11m";
+    const char *reset = "\033[0m";
+    return std::string(yellow) + s + std::string(reset);
+}
+
 inline std::string Green(const std::string &s) {
     // https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit
     const char *green = "\033[1m\033[38;5;22m";

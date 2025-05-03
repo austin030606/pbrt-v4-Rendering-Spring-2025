@@ -29,11 +29,14 @@ void SuppressErrorMessages();
 
 // Error Reporting Function Declarations
 void Warning(const FileLoc *loc, const char *message);
+void Devlog(const FileLoc *loc, const char *message);
 void Error(const FileLoc *loc, const char *message);
 [[noreturn]] void ErrorExit(const FileLoc *loc, const char *message);
 
 template <typename... Args>
 inline void Warning(const char *fmt, Args &&...args);
+template <typename... Args>
+inline void Devlog(const char *fmt, Args &&...args);
 template <typename... Args>
 inline void Error(const char *fmt, Args &&...args);
 template <typename... Args>
@@ -48,6 +51,16 @@ inline void Warning(const FileLoc *loc, const char *fmt, Args &&...args) {
 template <typename... Args>
 inline void Warning(const char *fmt, Args &&...args) {
     Warning(nullptr, StringPrintf(fmt, std::forward<Args>(args)...).c_str());
+}
+
+template <typename... Args>
+inline void Devlog(const FileLoc *loc, const char *fmt, Args &&...args) {
+    Devlog(loc, StringPrintf(fmt, std::forward<Args>(args)...).c_str());
+}
+
+template <typename... Args>
+inline void Devlog(const char *fmt, Args &&...args) {
+    Devlog(nullptr, StringPrintf(fmt, std::forward<Args>(args)...).c_str());
 }
 
 template <typename... Args>

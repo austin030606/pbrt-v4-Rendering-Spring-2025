@@ -1167,6 +1167,10 @@ Primitive CreateAccelerator(const std::string &name, std::vector<Primitive> prim
         accel = BVHAggregate::Create(std::move(prims), parameters);
     else if (name == "kdtree")
         accel = KdTreeAggregate::Create(std::move(prims), parameters);
+    else if (name == "grid") {
+        Devlog("using %s.", name);
+        accel = KdTreeAggregate::Create(std::move(prims), parameters);
+    }
     else
         ErrorExit("%s: accelerator type unknown.", name);
 
