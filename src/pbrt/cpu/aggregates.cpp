@@ -1162,7 +1162,18 @@ KdTreeAggregate *KdTreeAggregate::Create(std::vector<Primitive> prims,
 
 GridAggregate::GridAggregate(std::vector<Primitive> p)
     : primitives(std::move(p)) {
+    // Find bounding box
+    for (Primitive &prim : primitives) {
+        Bounds3f b = prim.Bounds();
+        bounds = Union(bounds, b);
+    }
+    // Determine grid resolution
+    Vector3f diagonal = bounds.pMax - bounds.pMin; // Vector from the minimum point to the maximum point of the bound
+    int maxAxis = bounds.MaxDimension();
+    float invMaxWidth = 1.f / diagonal[maxAxis];
+    CHECK(invMaxWidth > 0.f);
 
+    // Place object in cell if its bounding box overlaps the cell
 }
 
 GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,
