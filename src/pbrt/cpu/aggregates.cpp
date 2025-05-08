@@ -1175,8 +1175,8 @@ struct Voxel {
     }
     // bool Intersect(const Ray &ray, Intersection *isect, RWMutexLock &lock);
     // bool IntersectP(const Ray &ray, RWMutexLock &lock);
-private:
     std::vector<uint32_t> storedPrimitives;
+private:
     bool allCanIntersect;
 };
 
@@ -1194,10 +1194,10 @@ GridAggregate::GridAggregate(std::vector<Primitive> p)
     // Determine grid resolution
     Vector3f diagonal = bounds.pMax - bounds.pMin; // Vector from the minimum point to the maximum point of the bound
     int maxAxis = bounds.MaxDimension();
-    float invMaxWidth = 1.f / diagonal[maxAxis];
+    Float invMaxWidth = 1.f / diagonal[maxAxis];
     CHECK(invMaxWidth > 0.f);
-    float maxAxisNumberOfVoxels = 3.f * powf(float(primitives.size()), 1.f/3.f); // number of voxels which the longest axis has
-    float voxelsPerUnitDist = maxAxisNumberOfVoxels * invMaxWidth;
+    Float maxAxisNumberOfVoxels = 3.f * powf(Float(primitives.size()), 1.f/3.f); // number of voxels which the longest axis has
+    Float voxelsPerUnitDist = maxAxisNumberOfVoxels * invMaxWidth;
     for (int axis = 0; axis < 3; ++axis) {
         numberOfVoxels[axis] = std::round(diagonal[axis] * voxelsPerUnitDist);
         numberOfVoxels[axis] = std::max(numberOfVoxels[axis], 1);
@@ -1254,6 +1254,17 @@ GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,
 
 pstd::optional<ShapeIntersection> GridAggregate::Intersect(const Ray &ray,
                                                              Float rayTMax) const {
+    // Check ray against overall grid bounds
+    Float hitt0, hitt1;
+    if (!bounds.IntersectP(ray.o, ray.d, rayTMax, &hitt0, &hitt1)) {
+        return {};
+    }
+
+    Float rayT = hitt0;
+    Point3f gridIntersect = ray(rayT);
+    
+    // Set up 3D DDA for ray
+    // Walk ray through voxel grid
     return {};
 }
 
