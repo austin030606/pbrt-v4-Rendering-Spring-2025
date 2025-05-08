@@ -1162,17 +1162,26 @@ KdTreeAggregate *KdTreeAggregate::Create(std::vector<Primitive> prims,
 
 GridAggregate::GridAggregate(std::vector<Primitive> p)
     : primitives(std::move(p)) {
-    // Find bounding box
+    Devlog("begin grid construction");
+        // Find bounding box
     for (Primitive &prim : primitives) {
         Bounds3f b = prim.Bounds();
         bounds = Union(bounds, b);
     }
+    Devlog("finish bounds calculation");
     // Determine grid resolution
     Vector3f diagonal = bounds.pMax - bounds.pMin; // Vector from the minimum point to the maximum point of the bound
     int maxAxis = bounds.MaxDimension();
     float invMaxWidth = 1.f / diagonal[maxAxis];
     CHECK(invMaxWidth > 0.f);
-
+    float maxAxisNumberOfVoxels = 3.f * powf(float(primitives.size()), 1.f/3.f); // number of voxels which the longest axis has
+    float voxelsPerUnitDist = maxAxisNumberOfVoxels * invMaxWidth;
+    for (int axis = 0; axis < 3; ++axis) {
+        numberOfVoxels[axis] = std::round(diagonal[axis] * voxelsPerUnitDist);
+        numberOfVoxels[axis] = std::max(numberOfVoxels[axis], 1);
+        numberOfVoxels[axis] = std::min(numberOfVoxels[axis], 64);
+    }
+    Devlog("finish grid resolution calculation");
     // Place object in cell if its bounding box overlaps the cell
 }
 
@@ -1199,7 +1208,7 @@ Primitive CreateAccelerator(const std::string &name, std::vector<Primitive> prim
         accel = KdTreeAggregate::Create(std::move(prims), parameters);
     else if (name == "grid") {
         Devlog("using the %s accelerator.", name);
-        accel = KdTreeAggregate::Create(std::move(prims), parameters);
+        accel = GridAggregate::Create(std::move(prims), parameters);
     }
     else
         ErrorExit("%s: accelerator type unknown.", name);

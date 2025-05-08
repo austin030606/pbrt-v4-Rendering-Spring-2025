@@ -120,6 +120,7 @@ class GridAggregate {
   private:
     Bounds3f bounds;
     std::vector<Primitive> primitives;
+    int numberOfVoxels[3]; // number of voxels in each axis
 };
 
 }  // namespace pbrt
