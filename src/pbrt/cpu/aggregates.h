@@ -104,6 +104,8 @@ class KdTreeAggregate {
     Bounds3f bounds;
 };
 
+struct Voxel;
+
 // GridAggregate Definition
 class GridAggregate {
   public:
@@ -118,9 +120,21 @@ class GridAggregate {
     bool IntersectP(const Ray &ray, Float tMax) const;
 
   private:
+    int posToVoxel(const Point3f &P, int axis) const {
+        int v = (int)((P[axis] - bounds.pMin[axis]) * invVoxelWidth[axis]);
+        v = std::max(v, 0);
+        v = std::min(v, numberOfVoxels[axis] - 1);
+        return v;
+    } // turns a world space (x , y , z) position into the coordinates of the voxel that contains that point
+    inline int offset(int x, int y, int z) const {
+        return z * numberOfVoxels.x * numberOfVoxels.y + y * numberOfVoxels.x + x;
+    } // 3D voxel index to index in voxels array 
+
     Bounds3f bounds;
     std::vector<Primitive> primitives;
-    int numberOfVoxels[3]; // number of voxels in each axis
+    Vector3i numberOfVoxels; // number of voxels in each axis
+    Vector3f voxelWidth, invVoxelWidth;
+    std::vector<Voxel*> voxels;
 };
 
 }  // namespace pbrt

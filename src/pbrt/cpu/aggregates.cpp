@@ -1160,6 +1160,27 @@ KdTreeAggregate *KdTreeAggregate::Create(std::vector<Primitive> prims,
                                maxPrims, maxDepth);
 }
 
+
+// Voxel Declarations
+struct Voxel {
+    // Voxel Public Methods
+    uint32_t size() const { return storedPrimitives.size(); }
+    Voxel() { }
+    // Voxel(Reference<Primitive> op) {
+    //     allCanIntersect = false;
+    //     primitives.push_back(op);
+    // }
+    void AddPrimitive(uint32_t prim_idx) {
+        storedPrimitives.push_back(prim_idx);
+    }
+    // bool Intersect(const Ray &ray, Intersection *isect, RWMutexLock &lock);
+    // bool IntersectP(const Ray &ray, RWMutexLock &lock);
+private:
+    std::vector<uint32_t> storedPrimitives;
+    bool allCanIntersect;
+};
+
+
 GridAggregate::GridAggregate(std::vector<Primitive> p)
     : primitives(std::move(p)) {
     Devlog("begin grid construction");
@@ -1169,6 +1190,7 @@ GridAggregate::GridAggregate(std::vector<Primitive> p)
         bounds = Union(bounds, b);
     }
     Devlog("finish bounds calculation");
+
     // Determine grid resolution
     Vector3f diagonal = bounds.pMax - bounds.pMin; // Vector from the minimum point to the maximum point of the bound
     int maxAxis = bounds.MaxDimension();
@@ -1182,7 +1204,47 @@ GridAggregate::GridAggregate(std::vector<Primitive> p)
         numberOfVoxels[axis] = std::min(numberOfVoxels[axis], 64);
     }
     Devlog("finish grid resolution calculation");
+
+    for (int axis = 0; axis < 3; ++axis) {
+        voxelWidth[axis] = diagonal[axis] / numberOfVoxels[axis];
+        invVoxelWidth[axis] = (voxelWidth[axis] == 0.f) ? 0.f : 1.f / voxelWidth[axis];
+    }
+    int totalNumberOfVoxels = numberOfVoxels.x * numberOfVoxels.y * numberOfVoxels.z;
+    voxels.resize(totalNumberOfVoxels);
+    Devlog("initialized %d voxels", totalNumberOfVoxels);
     // Place object in cell if its bounding box overlaps the cell
+
+    // Add primitives to grid voxels
+    Devlog("start adding %d primitives to voxels", primitives.size());
+    for (uint32_t i = 0; i < primitives.size(); ++i) {
+        // Find voxel extent of the current primitive
+        Bounds3f pb = primitives[i].Bounds();
+        int vmin[3], vmax[3];
+        for (int axis = 0; axis < 3; ++axis) {
+            vmin[axis] = posToVoxel(pb.pMin, axis);
+            vmax[axis] = posToVoxel(pb.pMax, axis);
+        }
+
+        // Add primitive to overlapping voxels
+        for (int z = vmin[2]; z <= vmax[2]; ++z) {
+            for (int y = vmin[1]; y <= vmax[1]; ++y) {
+                for (int x = vmin[0]; x <= vmax[0]; ++x) {
+                    int o = offset(x, y, z);
+                    if (voxels[o] == nullptr) {
+                        // Allocate new voxel
+                        voxels[o] = new Voxel();
+                    }
+                    voxels[o]->AddPrimitive(i);
+                }
+            }
+        }
+    }
+    Devlog("finish adding %d primitives to voxels", primitives.size());
+    // for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
+    //     if (voxels[i] != nullptr) {
+    //         Devlog("voxel %d has size %d", i, voxels[i]->size());
+    //     }
+    // }
 }
 
 GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,
