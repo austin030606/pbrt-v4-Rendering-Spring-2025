@@ -1286,8 +1286,41 @@ pstd::optional<ShapeIntersection> GridAggregate::Intersect(const Ray &ray,
             Out[axis] = -1;
         }
     }
+
     // Walk ray through voxel grid
-    return {};
+    pstd::optional<ShapeIntersection> si;
+    for (;;) {
+        // Check for intersection in current voxel and advance to next
+        Voxel *voxel = voxels[offset(Pos[0], Pos[1], Pos[2])];
+        if (voxel != nullptr) {
+            // check with primitives inside this voxel
+            for (uint32_t i = 0; i < voxel->size(); ++i) {
+                int index = voxel->storedPrimitives[i];
+                const Primitive &p = primitives[index];
+                pstd::optional<ShapeIntersection> primSi = p.Intersect(ray, rayTMax);
+                if (primSi) {
+                    si = primSi;
+                    rayTMax = si->tHit;
+                }
+            }
+        }
+
+        // Advance to next voxel
+
+        // Find _stepAxis_ for stepping to next voxel
+        int bits = ((NextCrossingT[0] < NextCrossingT[1]) << 2) +
+                   ((NextCrossingT[0] < NextCrossingT[2]) << 1) +
+                   ((NextCrossingT[1] < NextCrossingT[2]));
+        const int cmpToAxis[8] = { 2, 1, 2, 1, 2, 2, 0, 0 };
+        int stepAxis = cmpToAxis[bits];
+        if (rayTMax < NextCrossingT[stepAxis])
+            break;
+        Pos[stepAxis] += Step[stepAxis];
+        if (Pos[stepAxis] == Out[stepAxis])
+            break;
+        NextCrossingT[stepAxis] += DeltaT[stepAxis];
+    }
+    return si;
 }
 
 bool GridAggregate::IntersectP(const Ray &ray, Float raytMax) const {
