@@ -126,6 +126,9 @@ class GridAggregate {
         v = std::min(v, numberOfVoxels[axis] - 1);
         return v;
     } // turns a world space (x , y , z) position into the coordinates of the voxel that contains that point
+    Float voxelToPos(int p, int axis) const {
+        return bounds.pMin[axis] + p * voxelWidth[axis];
+    } // calculates the position of a particular voxel’s lower corner
     inline int offset(int x, int y, int z) const {
         return z * numberOfVoxels.x * numberOfVoxels.y + y * numberOfVoxels.x + x;
     } // 3D voxel index to index in voxels array 

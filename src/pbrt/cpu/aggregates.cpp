@@ -1262,8 +1262,30 @@ pstd::optional<ShapeIntersection> GridAggregate::Intersect(const Ray &ray,
 
     Float rayT = hitt0;
     Point3f gridIntersect = ray(rayT);
-    
+
     // Set up 3D DDA for ray
+    Vector3f NextCrossingT, DeltaT;
+    Vector3i Step, Out, Pos;
+    for (int axis = 0; axis < 3; ++axis) {
+        Float rayDirection = ray.d[axis];
+        if (rayDirection == -0.f) rayDirection = 0.f;
+        // Compute current voxel for axis
+        Pos[axis] = posToVoxel(gridIntersect, axis);
+        if (rayDirection >= 0) {
+            // Handle ray with positive direction for voxel stepping
+            NextCrossingT[axis] = rayT + (voxelToPos(Pos[axis] + 1, axis) - gridIntersect[axis]) / rayDirection;
+            DeltaT[axis] = voxelWidth[axis] / rayDirection;
+            Step[axis] = 1;
+            Out[axis] = numberOfVoxels[axis];
+        }
+        else {
+            // Handle ray with negative direction for voxel stepping
+            NextCrossingT[axis] = rayT + (voxelToPos(Pos[axis], axis) - gridIntersect[axis]) / rayDirection;
+            DeltaT[axis] = -voxelWidth[axis] / rayDirection;
+            Step[axis] = -1;
+            Out[axis] = -1;
+        }
+    }
     // Walk ray through voxel grid
     return {};
 }
