@@ -1324,6 +1324,70 @@ pstd::optional<ShapeIntersection> GridAggregate::Intersect(const Ray &ray,
 }
 
 bool GridAggregate::IntersectP(const Ray &ray, Float raytMax) const {
+    // Check ray against overall grid bounds
+    Float hitt0, hitt1;
+    if (!bounds.IntersectP(ray.o, ray.d, raytMax, &hitt0, &hitt1)) {
+        return false;
+    }
+
+    Float rayT = hitt0;
+    Point3f gridIntersect = ray(rayT);
+
+    // Set up 3D DDA for ray
+    Vector3f NextCrossingT, DeltaT;
+    Vector3i Step, Out, Pos;
+    for (int axis = 0; axis < 3; ++axis) {
+        Float rayDirection = ray.d[axis];
+        if (rayDirection == -0.f) rayDirection = 0.f;
+        // Compute current voxel for axis
+        Pos[axis] = posToVoxel(gridIntersect, axis);
+        if (rayDirection >= 0) {
+            // Handle ray with positive direction for voxel stepping
+            NextCrossingT[axis] = rayT + (voxelToPos(Pos[axis] + 1, axis) - gridIntersect[axis]) / rayDirection;
+            DeltaT[axis] = voxelWidth[axis] / rayDirection;
+            Step[axis] = 1;
+            Out[axis] = numberOfVoxels[axis];
+        }
+        else {
+            // Handle ray with negative direction for voxel stepping
+            NextCrossingT[axis] = rayT + (voxelToPos(Pos[axis], axis) - gridIntersect[axis]) / rayDirection;
+            DeltaT[axis] = -voxelWidth[axis] / rayDirection;
+            Step[axis] = -1;
+            Out[axis] = -1;
+        }
+    }
+
+    // Walk ray through voxel grid
+    for (;;) {
+        // Check for intersection in current voxel and advance to next
+        Voxel *voxel = voxels[offset(Pos[0], Pos[1], Pos[2])];
+        if (voxel != nullptr) {
+            // check with primitives inside this voxel
+            for (uint32_t i = 0; i < voxel->size(); ++i) {
+                int index = voxel->storedPrimitives[i];
+                const Primitive &p = primitives[index];
+                if (p.IntersectP(ray, raytMax)) {
+                    return true;
+                }
+                
+            }
+        }
+
+        // Advance to next voxel
+
+        // Find _stepAxis_ for stepping to next voxel
+        int bits = ((NextCrossingT[0] < NextCrossingT[1]) << 2) +
+                   ((NextCrossingT[0] < NextCrossingT[2]) << 1) +
+                   ((NextCrossingT[1] < NextCrossingT[2]));
+        const int cmpToAxis[8] = { 2, 1, 2, 1, 2, 2, 0, 0 };
+        int stepAxis = cmpToAxis[bits];
+        if (raytMax < NextCrossingT[stepAxis])
+            break;
+        Pos[stepAxis] += Step[stepAxis];
+        if (Pos[stepAxis] == Out[stepAxis])
+            break;
+        NextCrossingT[stepAxis] += DeltaT[stepAxis];
+    }
     return false;
 }
 
