@@ -1238,7 +1238,20 @@ GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
                 if (voxels[i]->size() > 32) {
                     // Build the second level grid
                     // bounds.pMin[axis] + p * voxelWidth[axis];
-                    Bounds3f voxelBounds;
+                    // z = i / (numberOfVoxels.x * numberOfVoxels.y);
+                    // z = i / (numberOfVoxels.x * numberOfVoxels.y);
+                    // int rem = offset % sliceSize;
+                    // y = rem / nx;
+                    // x = rem % nx;
+                    Point3i indices = offsetToXYZ(i);
+                    Point3f pMin, pMax;
+                    pMin.x = bounds.pMin.x + (indices.x) * voxelWidth.x;
+                    pMin.y = bounds.pMin.y + (indices.y) * voxelWidth.y;
+                    pMin.z = bounds.pMin.z + (indices.z) * voxelWidth.z;
+                    pMax.x = bounds.pMin.x + (indices.x + 1) * voxelWidth.x;
+                    pMax.y = bounds.pMin.y + (indices.y + 1) * voxelWidth.y;
+                    pMax.z = bounds.pMin.z + (indices.z + 1) * voxelWidth.z;
+                    Bounds3f voxelBounds(pMin, pMax);
                     voxels[i]->secondLevelGrid = new GridAggregate(&primitives, voxels[i]->storedPrimitives, voxelBounds);
                 }
             }
@@ -1274,11 +1287,11 @@ GridAggregate::GridAggregate(std::vector<Primitive>* original_p, std::vector<uin
     }
     int totalNumberOfVoxels = numberOfVoxels.x * numberOfVoxels.y * numberOfVoxels.z;
     voxels.resize(totalNumberOfVoxels);
-    LOG_VERBOSE("initialized %d voxels", totalNumberOfVoxels);
+    LOG_VERBOSE("initialized %d second level voxels", totalNumberOfVoxels);
     // Place object in cell if its bounding box overlaps the cell
 
     // Add primitives to grid voxels
-    LOG_VERBOSE("start adding %d primitives to voxels", p.size());
+    LOG_VERBOSE("start adding %d primitives to second level voxels", p.size());
     for (uint32_t i = 0; i < p.size(); ++i) {
         // Find voxel extent of the current primitive
         Bounds3f pb = (*firstLevelPrimitives)[p[i]].Bounds();
@@ -1302,7 +1315,7 @@ GridAggregate::GridAggregate(std::vector<Primitive>* original_p, std::vector<uin
             }
         }
     }
-    LOG_VERBOSE("finish adding %d primitives to voxels", primitives.size());
+    LOG_VERBOSE("finish adding %d primitives to second level voxels", p.size());
 }
 
 GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,

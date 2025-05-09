@@ -133,6 +133,14 @@ class GridAggregate {
     inline int offset(int x, int y, int z) const {
         return z * numberOfVoxels.x * numberOfVoxels.y + y * numberOfVoxels.x + x;
     } // 3D voxel index to index in voxels array 
+    Point3i offsetToXYZ(int o) const {
+        int sliceSize = numberOfVoxels.x * numberOfVoxels.y;
+        int rem = o % sliceSize;
+        // z = o / sliceSize;
+        // y = rem / numberOfVoxels.x;
+        // x = rem % numberOfVoxels.x;
+        return Point3i(rem % numberOfVoxels.x, rem / numberOfVoxels.x, o / sliceSize);
+    } // index in voxels array to 3D voxel index 
 
     Bounds3f bounds;
     std::vector<Primitive> primitives;
