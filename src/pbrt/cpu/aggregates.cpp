@@ -1163,33 +1163,24 @@ KdTreeAggregate *KdTreeAggregate::Create(std::vector<Primitive> prims,
 
 // Voxel Declarations
 struct Voxel {
-    // Voxel Public Methods
+    Voxel() {}
     uint32_t size() const { return storedPrimitives.size(); }
-    Voxel() { }
-    // Voxel(Reference<Primitive> op) {
-    //     allCanIntersect = false;
-    //     primitives.push_back(op);
-    // }
     void AddPrimitive(uint32_t prim_idx) {
         storedPrimitives.push_back(prim_idx);
     }
-    // bool Intersect(const Ray &ray, Intersection *isect, RWMutexLock &lock);
-    // bool IntersectP(const Ray &ray, RWMutexLock &lock);
     std::vector<uint32_t> storedPrimitives;
-private:
-    bool allCanIntersect;
 };
 
 
 GridAggregate::GridAggregate(std::vector<Primitive> p)
     : primitives(std::move(p)) {
-    Devlog("begin grid construction");
+    LOG_VERBOSE("begin grid construction");
         // Find bounding box
     for (Primitive &prim : primitives) {
         Bounds3f b = prim.Bounds();
         bounds = Union(bounds, b);
     }
-    Devlog("finish bounds calculation");
+    LOG_VERBOSE("finish bounds calculation");
 
     // Determine grid resolution
     Vector3f diagonal = bounds.pMax - bounds.pMin; // Vector from the minimum point to the maximum point of the bound
@@ -1203,7 +1194,7 @@ GridAggregate::GridAggregate(std::vector<Primitive> p)
         numberOfVoxels[axis] = std::max(numberOfVoxels[axis], 1);
         numberOfVoxels[axis] = std::min(numberOfVoxels[axis], 64);
     }
-    Devlog("finish grid resolution calculation");
+    LOG_VERBOSE("finish grid resolution calculation");
 
     for (int axis = 0; axis < 3; ++axis) {
         voxelWidth[axis] = diagonal[axis] / numberOfVoxels[axis];
@@ -1211,11 +1202,11 @@ GridAggregate::GridAggregate(std::vector<Primitive> p)
     }
     int totalNumberOfVoxels = numberOfVoxels.x * numberOfVoxels.y * numberOfVoxels.z;
     voxels.resize(totalNumberOfVoxels);
-    Devlog("initialized %d voxels", totalNumberOfVoxels);
+    LOG_VERBOSE("initialized %d voxels", totalNumberOfVoxels);
     // Place object in cell if its bounding box overlaps the cell
 
     // Add primitives to grid voxels
-    Devlog("start adding %d primitives to voxels", primitives.size());
+    LOG_VERBOSE("start adding %d primitives to voxels", primitives.size());
     for (uint32_t i = 0; i < primitives.size(); ++i) {
         // Find voxel extent of the current primitive
         Bounds3f pb = primitives[i].Bounds();
@@ -1239,10 +1230,10 @@ GridAggregate::GridAggregate(std::vector<Primitive> p)
             }
         }
     }
-    Devlog("finish adding %d primitives to voxels", primitives.size());
+    LOG_VERBOSE("finish adding %d primitives to voxels", primitives.size());
     // for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
     //     if (voxels[i] != nullptr) {
-    //         Devlog("voxel %d has size %d", i, voxels[i]->size());
+    //         LOG_VERBOSE("voxel %d has size %d", i, voxels[i]->size());
     //     }
     // }
 }
@@ -1399,7 +1390,7 @@ Primitive CreateAccelerator(const std::string &name, std::vector<Primitive> prim
     else if (name == "kdtree")
         accel = KdTreeAggregate::Create(std::move(prims), parameters);
     else if (name == "grid") {
-        Devlog("using the %s accelerator.", name);
+        LOG_VERBOSE("using the %s accelerator.", name);
         accel = GridAggregate::Create(std::move(prims), parameters);
     }
     else
