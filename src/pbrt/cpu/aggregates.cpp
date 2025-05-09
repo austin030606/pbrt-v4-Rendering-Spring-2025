@@ -1169,13 +1169,14 @@ struct Voxel {
         storedPrimitives.push_back(prim_idx);
     }
     std::vector<uint32_t> storedPrimitives;
+    GridAggregate* secondLevelGrid;
 };
 
 
 GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
     : primitives(std::move(p)) {
     LOG_VERBOSE("begin grid construction");
-        // Find bounding box
+    // Find bounding box
     for (Primitive &prim : primitives) {
         Bounds3f b = prim.Bounds();
         bounds = Union(bounds, b);
@@ -1231,6 +1232,18 @@ GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
         }
     }
     LOG_VERBOSE("finish adding %d primitives to voxels", primitives.size());
+    if (level == 2) {
+        for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
+            if (voxels[i] != nullptr) {
+                if (voxels[i]->size() > 32) {
+                    // Build the second level grid
+                    // bounds.pMin[axis] + p * voxelWidth[axis];
+                    Bounds3f voxelBounds;
+                    voxels[i]->secondLevelGrid = new GridAggregate(&primitives, voxels[i]->storedPrimitives, voxelBounds);
+                }
+            }
+        }
+    }
     // LOG_VERBOSE("grid level: %d", level);
     // int cnt = 0;
     // for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
@@ -1242,6 +1255,54 @@ GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
     //     }
     // }
     // LOG_VERBOSE("overflowing voxel count: %d", cnt);
+}
+
+GridAggregate::GridAggregate(std::vector<Primitive>* original_p, std::vector<uint32_t>& p, Bounds3f gridBounds) 
+    : firstLevelPrimitives(original_p){
+    LOG_VERBOSE("begin second level grid construction");
+    bounds = gridBounds;
+
+    // Determine grid resolution
+    Vector3f diagonal = bounds.pMax - bounds.pMin; // Vector from the minimum point to the maximum point of the bound
+    numberOfVoxels.x = 4;
+    numberOfVoxels.y = 4;
+    numberOfVoxels.z = 4;
+
+    for (int axis = 0; axis < 3; ++axis) {
+        voxelWidth[axis] = diagonal[axis] / numberOfVoxels[axis];
+        invVoxelWidth[axis] = (voxelWidth[axis] == 0.f) ? 0.f : 1.f / voxelWidth[axis];
+    }
+    int totalNumberOfVoxels = numberOfVoxels.x * numberOfVoxels.y * numberOfVoxels.z;
+    voxels.resize(totalNumberOfVoxels);
+    LOG_VERBOSE("initialized %d voxels", totalNumberOfVoxels);
+    // Place object in cell if its bounding box overlaps the cell
+
+    // Add primitives to grid voxels
+    LOG_VERBOSE("start adding %d primitives to voxels", p.size());
+    for (uint32_t i = 0; i < p.size(); ++i) {
+        // Find voxel extent of the current primitive
+        Bounds3f pb = (*firstLevelPrimitives)[p[i]].Bounds();
+        int vmin[3], vmax[3];
+        for (int axis = 0; axis < 3; ++axis) {
+            vmin[axis] = posToVoxel(pb.pMin, axis);
+            vmax[axis] = posToVoxel(pb.pMax, axis);
+        }
+
+        // Add primitive to overlapping voxels
+        for (int z = vmin[2]; z <= vmax[2]; ++z) {
+            for (int y = vmin[1]; y <= vmax[1]; ++y) {
+                for (int x = vmin[0]; x <= vmax[0]; ++x) {
+                    int o = offset(x, y, z);
+                    if (voxels[o] == nullptr) {
+                        // Allocate new voxel
+                        voxels[o] = new Voxel();
+                    }
+                    voxels[o]->AddPrimitive(p[i]);
+                }
+            }
+        }
+    }
+    LOG_VERBOSE("finish adding %d primitives to voxels", primitives.size());
 }
 
 GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,

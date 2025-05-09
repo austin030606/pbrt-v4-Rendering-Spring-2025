@@ -111,6 +111,7 @@ class GridAggregate {
   public:
     // GridAggregate Public Methods
     GridAggregate(std::vector<Primitive> p, int level);
+    GridAggregate(std::vector<Primitive>* original_p, std::vector<uint32_t>& p, Bounds3f gridBounds); // for constructing second level grids
     static GridAggregate *Create(std::vector<Primitive> prims,
                                    const ParameterDictionary &parameters);
     pstd::optional<ShapeIntersection> Intersect(const Ray &ray, Float tMax) const;
@@ -138,6 +139,7 @@ class GridAggregate {
     Vector3i numberOfVoxels; // number of voxels in each axis
     Vector3f voxelWidth, invVoxelWidth;
     std::vector<Voxel*> voxels;
+    std::vector<Primitive>* firstLevelPrimitives;
 };
 
 }  // namespace pbrt
