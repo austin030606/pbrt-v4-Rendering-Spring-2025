@@ -115,10 +115,12 @@ class GridAggregate {
     static GridAggregate *Create(std::vector<Primitive> prims,
                                    const ParameterDictionary &parameters);
     pstd::optional<ShapeIntersection> Intersect(const Ray &ray, Float tMax) const;
+    pstd::optional<ShapeIntersection> IntersectSecondLevel(const Ray &ray, Float tMax) const;
 
     Bounds3f Bounds() const { return bounds; }
 
     bool IntersectP(const Ray &ray, Float tMax) const;
+    bool IntersectPSecondLevel(const Ray &ray, Float tMax) const;
 
   private:
     int posToVoxel(const Point3f &P, int axis) const {

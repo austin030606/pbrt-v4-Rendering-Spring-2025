@@ -1163,7 +1163,7 @@ KdTreeAggregate *KdTreeAggregate::Create(std::vector<Primitive> prims,
 
 // Voxel Declarations
 struct Voxel {
-    Voxel() {}
+    Voxel() {secondLevelGrid = nullptr;}
     uint32_t size() const { return storedPrimitives.size(); }
     void AddPrimitive(uint32_t prim_idx) {
         storedPrimitives.push_back(prim_idx);
@@ -1316,6 +1316,17 @@ GridAggregate::GridAggregate(std::vector<Primitive>* original_p, std::vector<uin
         }
     }
     LOG_VERBOSE("finish adding %d primitives to second level voxels", p.size());
+
+    // int cnt = 0;
+    // for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
+    //     if (voxels[i] != nullptr) {
+    //         LOG_VERBOSE("second level voxel %d has size %d", i, voxels[i]->size());
+    //         if (voxels[i]->size() > 32) {
+    //             cnt++;
+    //         }
+    //     }
+    // }
+    // LOG_VERBOSE("overflowing voxel count: %d", cnt);
 }
 
 GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,
@@ -1368,9 +1379,87 @@ pstd::optional<ShapeIntersection> GridAggregate::Intersect(const Ray &ray,
         Voxel *voxel = voxels[offset(Pos[0], Pos[1], Pos[2])];
         if (voxel != nullptr) {
             // check with primitives inside this voxel
+            if (voxel->secondLevelGrid != nullptr) {
+                pstd::optional<ShapeIntersection> primSi = voxel->secondLevelGrid->IntersectSecondLevel(ray, rayTMax);
+                if (primSi) {
+                    si = primSi;
+                    rayTMax = si->tHit;
+                }
+            } else {
+                for (uint32_t i = 0; i < voxel->size(); ++i) {
+                    int index = voxel->storedPrimitives[i];
+                    const Primitive &p = primitives[index];
+                    pstd::optional<ShapeIntersection> primSi = p.Intersect(ray, rayTMax);
+                    if (primSi) {
+                        si = primSi;
+                        rayTMax = si->tHit;
+                    }
+                }
+            }
+        }
+
+        // Advance to next voxel
+
+        // Find _stepAxis_ for stepping to next voxel
+        int bits = ((NextCrossingT[0] < NextCrossingT[1]) << 2) +
+                   ((NextCrossingT[0] < NextCrossingT[2]) << 1) +
+                   ((NextCrossingT[1] < NextCrossingT[2]));
+        const int cmpToAxis[8] = { 2, 1, 2, 1, 2, 2, 0, 0 };
+        int stepAxis = cmpToAxis[bits];
+        if (rayTMax < NextCrossingT[stepAxis])
+            break;
+        Pos[stepAxis] += Step[stepAxis];
+        if (Pos[stepAxis] == Out[stepAxis])
+            break;
+        NextCrossingT[stepAxis] += DeltaT[stepAxis];
+    }
+    return si;
+}
+
+pstd::optional<ShapeIntersection> GridAggregate::IntersectSecondLevel(const Ray &ray,
+                                                                      Float rayTMax) const {
+    // Check ray against overall grid bounds
+    Float hitt0, hitt1;
+    if (!bounds.IntersectP(ray.o, ray.d, rayTMax, &hitt0, &hitt1)) {
+        return {};
+    }
+
+    Float rayT = hitt0;
+    Point3f gridIntersect = ray(rayT);
+    // Set up 3D DDA for ray
+    Vector3f NextCrossingT, DeltaT;
+    Vector3i Step, Out, Pos;
+    for (int axis = 0; axis < 3; ++axis) {
+        Float rayDirection = ray.d[axis];
+        if (rayDirection == -0.f) rayDirection = 0.f;
+        // Compute current voxel for axis
+        Pos[axis] = posToVoxel(gridIntersect, axis);
+        if (rayDirection >= 0) {
+            // Handle ray with positive direction for voxel stepping
+            NextCrossingT[axis] = rayT + (voxelToPos(Pos[axis] + 1, axis) - gridIntersect[axis]) / rayDirection;
+            DeltaT[axis] = voxelWidth[axis] / rayDirection;
+            Step[axis] = 1;
+            Out[axis] = numberOfVoxels[axis];
+        }
+        else {
+            // Handle ray with negative direction for voxel stepping
+            NextCrossingT[axis] = rayT + (voxelToPos(Pos[axis], axis) - gridIntersect[axis]) / rayDirection;
+            DeltaT[axis] = -voxelWidth[axis] / rayDirection;
+            Step[axis] = -1;
+            Out[axis] = -1;
+        }
+    }
+    
+    // Walk ray through voxel grid
+    pstd::optional<ShapeIntersection> si;
+    for (;;) {
+        // Check for intersection in current voxel and advance to next
+        Voxel *voxel = voxels[offset(Pos[0], Pos[1], Pos[2])];
+        if (voxel != nullptr) {
+            // check with primitives inside this voxel
             for (uint32_t i = 0; i < voxel->size(); ++i) {
                 int index = voxel->storedPrimitives[i];
-                const Primitive &p = primitives[index];
+                const Primitive &p = (*firstLevelPrimitives)[index];
                 pstd::optional<ShapeIntersection> primSi = p.Intersect(ray, rayTMax);
                 if (primSi) {
                     si = primSi;
@@ -1437,9 +1526,83 @@ bool GridAggregate::IntersectP(const Ray &ray, Float raytMax) const {
         Voxel *voxel = voxels[offset(Pos[0], Pos[1], Pos[2])];
         if (voxel != nullptr) {
             // check with primitives inside this voxel
+            if (voxel->secondLevelGrid != nullptr) {
+                if (voxel->secondLevelGrid->IntersectPSecondLevel(ray, raytMax)) {
+                    return true;
+                }
+            } else {
+                for (uint32_t i = 0; i < voxel->size(); ++i) {
+                    int index = voxel->storedPrimitives[i];
+                    const Primitive &p = primitives[index];
+                    if (p.IntersectP(ray, raytMax)) {
+                        return true;
+                    }
+                    
+                }
+            }
+        }
+
+        // Advance to next voxel
+
+        // Find _stepAxis_ for stepping to next voxel
+        int bits = ((NextCrossingT[0] < NextCrossingT[1]) << 2) +
+                   ((NextCrossingT[0] < NextCrossingT[2]) << 1) +
+                   ((NextCrossingT[1] < NextCrossingT[2]));
+        const int cmpToAxis[8] = { 2, 1, 2, 1, 2, 2, 0, 0 };
+        int stepAxis = cmpToAxis[bits];
+        if (raytMax < NextCrossingT[stepAxis])
+            break;
+        Pos[stepAxis] += Step[stepAxis];
+        if (Pos[stepAxis] == Out[stepAxis])
+            break;
+        NextCrossingT[stepAxis] += DeltaT[stepAxis];
+    }
+    return false;
+}
+
+bool GridAggregate::IntersectPSecondLevel(const Ray &ray, Float raytMax) const {
+    // Check ray against overall grid bounds
+    Float hitt0, hitt1;
+    if (!bounds.IntersectP(ray.o, ray.d, raytMax, &hitt0, &hitt1)) {
+        return false;
+    }
+
+    Float rayT = hitt0;
+    Point3f gridIntersect = ray(rayT);
+
+    // Set up 3D DDA for ray
+    Vector3f NextCrossingT, DeltaT;
+    Vector3i Step, Out, Pos;
+    for (int axis = 0; axis < 3; ++axis) {
+        Float rayDirection = ray.d[axis];
+        if (rayDirection == -0.f) rayDirection = 0.f;
+        // Compute current voxel for axis
+        Pos[axis] = posToVoxel(gridIntersect, axis);
+        if (rayDirection >= 0) {
+            // Handle ray with positive direction for voxel stepping
+            NextCrossingT[axis] = rayT + (voxelToPos(Pos[axis] + 1, axis) - gridIntersect[axis]) / rayDirection;
+            DeltaT[axis] = voxelWidth[axis] / rayDirection;
+            Step[axis] = 1;
+            Out[axis] = numberOfVoxels[axis];
+        }
+        else {
+            // Handle ray with negative direction for voxel stepping
+            NextCrossingT[axis] = rayT + (voxelToPos(Pos[axis], axis) - gridIntersect[axis]) / rayDirection;
+            DeltaT[axis] = -voxelWidth[axis] / rayDirection;
+            Step[axis] = -1;
+            Out[axis] = -1;
+        }
+    }
+
+    // Walk ray through voxel grid
+    for (;;) {
+        // Check for intersection in current voxel and advance to next
+        Voxel *voxel = voxels[offset(Pos[0], Pos[1], Pos[2])];
+        if (voxel != nullptr) {
+            // check with primitives inside this voxel
             for (uint32_t i = 0; i < voxel->size(); ++i) {
                 int index = voxel->storedPrimitives[i];
-                const Primitive &p = primitives[index];
+                const Primitive &p = (*firstLevelPrimitives)[index];
                 if (p.IntersectP(ray, raytMax)) {
                     return true;
                 }
