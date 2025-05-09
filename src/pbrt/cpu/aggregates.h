@@ -110,7 +110,7 @@ struct Voxel;
 class GridAggregate {
   public:
     // GridAggregate Public Methods
-    GridAggregate(std::vector<Primitive> p);
+    GridAggregate(std::vector<Primitive> p, int level);
     static GridAggregate *Create(std::vector<Primitive> prims,
                                    const ParameterDictionary &parameters);
     pstd::optional<ShapeIntersection> Intersect(const Ray &ray, Float tMax) const;

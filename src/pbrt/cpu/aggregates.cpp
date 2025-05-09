@@ -1172,7 +1172,7 @@ struct Voxel {
 };
 
 
-GridAggregate::GridAggregate(std::vector<Primitive> p)
+GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
     : primitives(std::move(p)) {
     LOG_VERBOSE("begin grid construction");
         // Find bounding box
@@ -1231,6 +1231,7 @@ GridAggregate::GridAggregate(std::vector<Primitive> p)
         }
     }
     LOG_VERBOSE("finish adding %d primitives to voxels", primitives.size());
+    // LOG_VERBOSE("grid level: %d", level);
     // int cnt = 0;
     // for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
     //     if (voxels[i] != nullptr) {
@@ -1245,7 +1246,10 @@ GridAggregate::GridAggregate(std::vector<Primitive> p)
 
 GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,
     const ParameterDictionary &parameters) {
-    return new GridAggregate(std::move(prims));
+    int level = parameters.GetOneInt("level", 1);
+    level = std::max(level, 1);
+    level = std::min(level, 2);
+    return new GridAggregate(std::move(prims), level);
 }
 
 pstd::optional<ShapeIntersection> GridAggregate::Intersect(const Ray &ray,
