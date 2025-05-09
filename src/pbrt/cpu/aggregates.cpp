@@ -1231,11 +1231,16 @@ GridAggregate::GridAggregate(std::vector<Primitive> p)
         }
     }
     LOG_VERBOSE("finish adding %d primitives to voxels", primitives.size());
+    // int cnt = 0;
     // for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
     //     if (voxels[i] != nullptr) {
-    //         LOG_VERBOSE("voxel %d has size %d", i, voxels[i]->size());
+    //         // LOG_VERBOSE("voxel %d has size %d", i, voxels[i]->size());
+    //         if (voxels[i]->size() > 32) {
+    //             cnt++;
+    //         }
     //     }
     // }
+    // LOG_VERBOSE("overflowing voxel count: %d", cnt);
 }
 
 GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,
