@@ -14,6 +14,7 @@
 #include <pbrt/util/parallel.h>
 #include <pbrt/util/print.h>
 #include <pbrt/util/stats.h>
+#include <pbrt/util/progressreporter.h>
 
 #include <algorithm>
 #include <tuple>
@@ -142,6 +143,8 @@ BVHAggregate::BVHAggregate(std::vector<Primitive> prims, int maxPrimsInNode,
     : maxPrimsInNode(std::min(255, maxPrimsInNode)),
       primitives(std::move(prims)),
       splitMethod(splitMethod) {
+    Timer constructionTimer;
+    LOG_VERBOSE("START BVH construction");
     CHECK(!primitives.empty());
     // Build BVH from _primitives_
     // Initialize _bvhPrimitives_ array for primitives
@@ -187,6 +190,7 @@ BVHAggregate::BVHAggregate(std::vector<Primitive> prims, int maxPrimsInNode,
     int offset = 0;
     flattenBVH(root, &offset);
     CHECK_EQ(totalNodes.load(), offset);
+    LOG_VERBOSE("FINISH BVH construction after %f seconds", constructionTimer.ElapsedSeconds());
 }
 
 BVHBuildNode *BVHAggregate::buildRecursive(ThreadLocal<Allocator> &threadAllocators,
@@ -803,6 +807,8 @@ KdTreeAggregate::KdTreeAggregate(std::vector<Primitive> p, int isectCost,
       maxPrims(maxPrims),
       emptyBonus(emptyBonus),
       primitives(std::move(p)) {
+    Timer constructionTimer;
+    LOG_VERBOSE("START Kd-Tree construction");
     // Build kd-tree aggregate
     nextFreeNode = nAllocedNodes = 0;
     if (maxDepth <= 0)
@@ -832,6 +838,7 @@ KdTreeAggregate::KdTreeAggregate(std::vector<Primitive> p, int isectCost,
     // Start recursive construction of kd-tree
     buildTree(0, bounds, primBounds, primNums, maxDepth, edges, pstd::span<int>(prims0),
               pstd::span<int>(prims1), 0);
+    LOG_VERBOSE("FINISH Kd-Tree construction after %f seconds", constructionTimer.ElapsedSeconds());
 }
 
 void KdTreeNode::InitLeaf(pstd::span<const int> primNums,
@@ -1175,14 +1182,15 @@ struct Voxel {
 
 GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
     : primitives(std::move(p)), firstLevelPrimitives(nullptr) {
-    LOG_VERBOSE("begin grid construction");
+    Timer constructionTimer;
+    LOG_VERBOSE("START %d-level Grid construction", level);
     // Find bounding box
     for (Primitive &prim : primitives) {
         Bounds3f b = prim.Bounds();
         bounds = Union(bounds, b);
     }
     LOG_VERBOSE("finish bounds calculation");
-
+    
     // Determine grid resolution
     Vector3f diagonal = bounds.pMax - bounds.pMin; // Vector from the minimum point to the maximum point of the bound
     int maxAxis = bounds.MaxDimension();
@@ -1196,7 +1204,7 @@ GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
         numberOfVoxels[axis] = std::min(numberOfVoxels[axis], 64);
     }
     LOG_VERBOSE("finish grid resolution calculation");
-
+    
     for (int axis = 0; axis < 3; ++axis) {
         voxelWidth[axis] = diagonal[axis] / numberOfVoxels[axis];
         invVoxelWidth[axis] = (voxelWidth[axis] == 0.f) ? 0.f : 1.f / voxelWidth[axis];
@@ -1205,7 +1213,7 @@ GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
     voxels.resize(totalNumberOfVoxels);
     LOG_VERBOSE("initialized %d voxels", totalNumberOfVoxels);
     // Place object in cell if its bounding box overlaps the cell
-
+    
     // Add primitives to grid voxels
     LOG_VERBOSE("start adding %d primitives to voxels", primitives.size());
     for (uint32_t i = 0; i < primitives.size(); ++i) {
@@ -1252,6 +1260,7 @@ GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
             }
         }
     }
+    LOG_VERBOSE("FINISH %d-level Grid construction after %f seconds", level, constructionTimer.ElapsedSeconds());
 }
 
 GridAggregate::GridAggregate(std::vector<Primitive>* original_p, std::vector<uint32_t>& p, Bounds3f gridBounds) 

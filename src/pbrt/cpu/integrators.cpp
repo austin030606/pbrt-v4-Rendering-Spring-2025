@@ -220,7 +220,7 @@ void ImageTileIntegrator::Render() {
     if (mseOutFile)
         fclose(mseOutFile);
     DisconnectFromDisplayServer();
-    LOG_VERBOSE("Rendering finished");
+    LOG_VERBOSE("Rendering finished after %f seconds", progress.ElapsedSeconds());
 }
 
 // RayIntegrator Method Definitions
