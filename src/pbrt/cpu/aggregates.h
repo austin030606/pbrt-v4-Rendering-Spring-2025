@@ -110,10 +110,12 @@ struct Voxel;
 class GridAggregate {
   public:
     // GridAggregate Public Methods
-    GridAggregate(std::vector<Primitive> p, int level);
-    GridAggregate(std::vector<Primitive>* original_p, std::vector<uint32_t>& p, Bounds3f gridBounds); // for constructing second level grids
+    GridAggregate(std::vector<Primitive> p, int level); // Constructor for second level grids
+    GridAggregate(std::vector<Primitive>* original_p, std::vector<uint32_t>& p, Bounds3f gridBounds); // Constructor for second level grids
+    
     static GridAggregate *Create(std::vector<Primitive> prims,
-                                   const ParameterDictionary &parameters);
+                                   const ParameterDictionary &parameters); // Create method for others to call
+    
     pstd::optional<ShapeIntersection> Intersect(const Ray &ray, Float tMax) const;
     pstd::optional<ShapeIntersection> IntersectSecondLevel(const Ray &ray, Float tMax) const;
 
@@ -149,7 +151,7 @@ class GridAggregate {
     Vector3i numberOfVoxels; // number of voxels in each axis
     Vector3f voxelWidth, invVoxelWidth;
     std::vector<Voxel*> voxels;
-    std::vector<Primitive>* firstLevelPrimitives;
+    std::vector<Primitive>* firstLevelPrimitives; // points back to the primitves vector to avoid storing multiple copies
 };
 
 }  // namespace pbrt

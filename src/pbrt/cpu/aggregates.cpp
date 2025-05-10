@@ -1163,7 +1163,7 @@ KdTreeAggregate *KdTreeAggregate::Create(std::vector<Primitive> prims,
 
 // Voxel Declarations
 struct Voxel {
-    Voxel() {secondLevelGrid = nullptr;}
+    Voxel() { secondLevelGrid = nullptr; }
     uint32_t size() const { return storedPrimitives.size(); }
     void AddPrimitive(uint32_t prim_idx) {
         storedPrimitives.push_back(prim_idx);
@@ -1174,7 +1174,7 @@ struct Voxel {
 
 
 GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
-    : primitives(std::move(p)) {
+    : primitives(std::move(p)), firstLevelPrimitives(nullptr) {
     LOG_VERBOSE("begin grid construction");
     // Find bounding box
     for (Primitive &prim : primitives) {
@@ -1232,17 +1232,12 @@ GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
         }
     }
     LOG_VERBOSE("finish adding %d primitives to voxels", primitives.size());
+    
     if (level == 2) {
         for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
             if (voxels[i] != nullptr) {
                 if (voxels[i]->size() > 32) {
-                    // Build the second level grid
-                    // bounds.pMin[axis] + p * voxelWidth[axis];
-                    // z = i / (numberOfVoxels.x * numberOfVoxels.y);
-                    // z = i / (numberOfVoxels.x * numberOfVoxels.y);
-                    // int rem = offset % sliceSize;
-                    // y = rem / nx;
-                    // x = rem % nx;
+                    // Build a second level grid in each voxel that has too many primitives
                     Point3i indices = offsetToXYZ(i);
                     Point3f pMin, pMax;
                     pMin.x = bounds.pMin.x + (indices.x) * voxelWidth.x;
@@ -1252,22 +1247,11 @@ GridAggregate::GridAggregate(std::vector<Primitive> p, int level)
                     pMax.y = bounds.pMin.y + (indices.y + 1) * voxelWidth.y;
                     pMax.z = bounds.pMin.z + (indices.z + 1) * voxelWidth.z;
                     Bounds3f voxelBounds(pMin, pMax);
-                    voxels[i]->secondLevelGrid = new GridAggregate(&primitives, voxels[i]->storedPrimitives, voxelBounds);
+                    voxels[i]->secondLevelGrid = new GridAggregate(&primitives, voxels[i]->storedPrimitives, voxelBounds); // construct using the second level constructor and voxel bounds
                 }
             }
         }
     }
-    // LOG_VERBOSE("grid level: %d", level);
-    // int cnt = 0;
-    // for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
-    //     if (voxels[i] != nullptr) {
-    //         // LOG_VERBOSE("voxel %d has size %d", i, voxels[i]->size());
-    //         if (voxels[i]->size() > 32) {
-    //             cnt++;
-    //         }
-    //     }
-    // }
-    // LOG_VERBOSE("overflowing voxel count: %d", cnt);
 }
 
 GridAggregate::GridAggregate(std::vector<Primitive>* original_p, std::vector<uint32_t>& p, Bounds3f gridBounds) 
@@ -1275,7 +1259,7 @@ GridAggregate::GridAggregate(std::vector<Primitive>* original_p, std::vector<uin
     LOG_VERBOSE("begin second level grid construction");
     bounds = gridBounds;
 
-    // Determine grid resolution
+    // set grid resolution
     Vector3f diagonal = bounds.pMax - bounds.pMin; // Vector from the minimum point to the maximum point of the bound
     numberOfVoxels.x = 4;
     numberOfVoxels.y = 4;
@@ -1316,17 +1300,6 @@ GridAggregate::GridAggregate(std::vector<Primitive>* original_p, std::vector<uin
         }
     }
     LOG_VERBOSE("finish adding %d primitives to second level voxels", p.size());
-
-    // int cnt = 0;
-    // for (uint32_t i = 0; i < totalNumberOfVoxels; ++i) {
-    //     if (voxels[i] != nullptr) {
-    //         LOG_VERBOSE("second level voxel %d has size %d", i, voxels[i]->size());
-    //         if (voxels[i]->size() > 32) {
-    //             cnt++;
-    //         }
-    //     }
-    // }
-    // LOG_VERBOSE("overflowing voxel count: %d", cnt);
 }
 
 GridAggregate *GridAggregate::Create(std::vector<Primitive> prims,
