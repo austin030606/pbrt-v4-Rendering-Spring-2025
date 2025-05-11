@@ -3274,6 +3274,7 @@ void SPPMIntegrator::Render() {
 #endif
     progress.Done();
     DisconnectFromDisplayServer();
+    LOG_VERBOSE("Rendering finished after %f seconds", progress.ElapsedSeconds());
 }
 
 SampledSpectrum SPPMIntegrator::SampleLd(const SurfaceInteraction &intr, const BSDF &b,
