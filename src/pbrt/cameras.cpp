@@ -1459,6 +1459,7 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
     Float x = std::sqrt(Sqr(diagonal) / (1 + Sqr(aspect)));
     Float y = aspect * x;
     physicalExtent = Bounds2f(Point2f(-x / 2, -y / 2), Point2f(x / 2, y / 2));
+    Float mainLenseApertureDiameter;
 
     // Initialize _elementInterfaces_ for camera
     for (size_t i = 0; i < lensParameters.size(); i += 4) {
@@ -1477,14 +1478,38 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
                         setApertureDiameter, apertureDiameter);
             else
                 apertureDiameter = setApertureDiameter;
+            mainLenseApertureDiameter = apertureDiameter;
         }
         // Add element interface to end of _elementInterfaces_
         elementInterfaces.push_back(
             {curvatureRadius, thickness, eta, apertureDiameter / 2});
     }
 
-    // Compute lens--film distance for given focus distance
+    // Compute lens--microlenses distance for given focus distance
     elementInterfaces.back().thickness = FocusThickLens(focusDistance);
+
+    // Set up microlenses
+    Float microlensEta = 1.5;
+    Float microlensFocalLength = 0.5 / 1000;
+    Float fNumber = mainLenseApertureDiameter / focalLength;
+    Float microlensDiameter = fNumber * microlensFocalLength;
+    Float microlensRadius = 2 * microlensFocalLength * (microlensEta - 1);
+    LOG_VERBOSE("fNumber: %f", fNumber);
+    LOG_VERBOSE("microlensDiameter: %f", microlensDiameter);
+    LOG_VERBOSE("microlensRadius: %f", microlensRadius);
+    Float halfMicrolensThickness = microlensRadius - std::sqrt(Sqr(microlensRadius) - Sqr(microlensDiameter*0.5));
+    LOG_VERBOSE("halfMicrolensThickness: %f", halfMicrolensThickness);
+
+    // single microlens in the center
+    elementInterfaces.back().thickness -= halfMicrolensThickness;
+    elementInterfaces.push_back(
+            {microlensRadius, 2 * halfMicrolensThickness, microlensEta, microlensDiameter / 2});
+    // image-side f-number, 
+    // which is the diameter divided by the separation between the 
+    // principal plane of the main lens and the microlens plane
+    
+    elementInterfaces.push_back(
+            {-microlensRadius, microlensFocalLength, 1.0, microlensDiameter / 2});
 
     // Compute exit pupil bounds at sampled points on the film
     int nSamples = 64;
@@ -1607,7 +1632,7 @@ Float LightFieldCamera::FocusThickLens(Float focusDistance) {
                   " is too short for a given lenses configuration",
                   focusDistance);
     Float delta = (pz[1] - z + pz[0] - std::sqrt(c)) / 2;
-
+    focalLength = f;
     return elementInterfaces.back().thickness + delta;
 }
 

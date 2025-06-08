@@ -705,6 +705,7 @@ class LightFieldCamera : public CameraBase {
     pstd::vector<LensElementInterface> elementInterfaces;
     Image apertureImage;
     pstd::vector<Bounds2f> exitPupilBounds;
+    Float focalLength;
 };
 
 PBRT_CPU_GPU inline pstd::optional<CameraRay> Camera::GenerateRay(CameraSample sample,
