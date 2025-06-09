@@ -1448,7 +1448,7 @@ RealisticCamera *RealisticCamera::Create(const ParameterDictionary &parameters,
 LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
                                  std::vector<Float> &lensParameters, Float focusDistance,
                                  Float setApertureDiameter, Image apertureImage,
-                                 Allocator alloc)
+                                 Allocator alloc, Float mlensFocalLength, int microlensN)
     : CameraBase(baseParameters),
       elementInterfaces(alloc),
       exitPupilBounds(alloc),
@@ -1460,6 +1460,8 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
     Float y = aspect * x;
     physicalExtent = Bounds2f(Point2f(-x / 2, -y / 2), Point2f(x / 2, y / 2));
     Float mainLenseApertureDiameter;
+    printedPixelCount = new bool;
+    *printedPixelCount = false;
 
     // Initialize _elementInterfaces_ for camera
     for (size_t i = 0; i < lensParameters.size(); i += 4) {
@@ -1490,7 +1492,8 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
 
     // Set up microlenses
     microlensEta = 1.5;
-    microlensFocalLength = 0.5 / 1000;
+    // microlensFocalLength = 0.5 / 1000;
+    microlensFocalLength = mlensFocalLength;
     // image-side f-number, 
     // which is the diameter divided by the separation between the 
     // principal plane of the main lens and the microlens plane
@@ -1515,7 +1518,7 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
             elementInterfaces.push_back(
                 {-microlensRadius, microlensFocalLength - halfMicrolensThickness, 1.0, microlensDiameter / 2});
     } else {
-        microlensesNumberPerAxis = 5;
+        microlensesNumberPerAxis = (microlensN%2==0)?microlensN+1:microlensN;
         Float sideLength = microlensDiameter * microlensesNumberPerAxis * 0.5 * 1.25;
         microlensesBounds.pMin = Point2f(-sideLength, -sideLength);
         microlensesBounds.pMax = Point2f(sideLength, sideLength);
@@ -1881,6 +1884,10 @@ PBRT_CPU_GPU pstd::optional<CameraRay> LightFieldCamera::GenerateRay(CameraSampl
               sample.pFilm.y / film.FullResolution().y);
     Point2f pFilm2 = physicalExtent.Lerp(s);
     Point3f pFilm(-pFilm2.x, pFilm2.y, 0);
+    if (!(*printedPixelCount)) {
+        LOG_VERBOSE("microlens diameter pixel count: %d", int(std::round(microlensDiameter / ((physicalExtent.pMax.x - physicalExtent.pMin.x) / film.FullResolution().x))));
+        *printedPixelCount = true;
+    }
 
     // Trace ray from _pFilm_ through lens system
     pstd::optional<ExitPupilSample> eps =
@@ -2263,6 +2270,8 @@ LightFieldCamera *LightFieldCamera::Create(const ParameterDictionary &parameters
     std::string lensFile = ResolveFilename(parameters.GetOneString("lensfile", ""));
     Float apertureDiameter = parameters.GetOneFloat("aperturediameter", 1.0);
     Float focusDistance = parameters.GetOneFloat("focusdistance", 10.0);
+    Float microlensFocalLength = parameters.GetOneFloat("microlensFocalLength", 0.5 / 1000);
+    int microlensN = parameters.GetOneInt("microlensN", 5);
 
     if (lensFile.empty()) {
         Error(loc, "No lens description file supplied!");
@@ -2398,7 +2407,7 @@ LightFieldCamera *LightFieldCamera::Create(const ParameterDictionary &parameters
 
     return alloc.new_object<LightFieldCamera>(cameraBaseParameters, lensParameters,
                                              focusDistance, apertureDiameter,
-                                             std::move(apertureImage), alloc);
+                                             std::move(apertureImage), alloc, microlensFocalLength, microlensN);
 }
 
 }  // namespace pbrt

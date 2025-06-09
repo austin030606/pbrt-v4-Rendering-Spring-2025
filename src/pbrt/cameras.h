@@ -591,7 +591,7 @@ class LightFieldCamera : public CameraBase {
     // LightFieldCamera Public Methods
     LightFieldCamera(CameraBaseParameters baseParameters,
                     std::vector<Float> &lensParameters, Float focusDistance,
-                    Float apertureDiameter, Image apertureImage, Allocator alloc);
+                    Float apertureDiameter, Image apertureImage, Allocator alloc, Float mlensFocalLength, int microlensN);
 
     static LightFieldCamera *Create(const ParameterDictionary &parameters,
                                    const CameraTransform &cameraTransform, Film film,
@@ -746,6 +746,7 @@ class LightFieldCamera : public CameraBase {
     Float halfMicrolensThickness;
     int microlensesNumberPerAxis;
     Bounds2f microlensesBounds;
+    bool *printedPixelCount;
 };
 
 PBRT_CPU_GPU inline pstd::optional<CameraRay> Camera::GenerateRay(CameraSample sample,
