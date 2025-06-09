@@ -1499,9 +1499,11 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
     microlensRadius = 2 * microlensFocalLength * (microlensEta - 1);
     halfMicrolensThickness = microlensRadius - std::sqrt(Sqr(microlensRadius) - Sqr(microlensDiameter*0.5));
     LOG_VERBOSE("fNumber: %f", fNumber);
-    LOG_VERBOSE("microlensDiameter: %f", microlensDiameter);
     LOG_VERBOSE("microlensRadius: %f", microlensRadius);
+    LOG_VERBOSE("mainLensFocalLength: %f", mainLensFocalLength);
+    LOG_VERBOSE("microlensDiameter: %f", microlensDiameter);
     LOG_VERBOSE("halfMicrolensThickness: %f", halfMicrolensThickness);
+    LOG_VERBOSE("effective fNumber: %f", mainLensFocalLength / microlensDiameter);
 
     if (false) {
         microlensesNumberPerAxis = 1;
@@ -1513,8 +1515,8 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
             elementInterfaces.push_back(
                 {-microlensRadius, microlensFocalLength - halfMicrolensThickness, 1.0, microlensDiameter / 2});
     } else {
-        microlensesNumberPerAxis = 321;
-        Float sideLength = microlensDiameter * microlensesNumberPerAxis * 0.5 * 2;
+        microlensesNumberPerAxis = 5;
+        Float sideLength = microlensDiameter * microlensesNumberPerAxis * 0.5 * 1.25;
         microlensesBounds.pMin = Point2f(-sideLength, -sideLength);
         microlensesBounds.pMax = Point2f(sideLength, sideLength);
     }
@@ -1862,6 +1864,16 @@ PBRT_CPU_GPU pstd::optional<ExitPupilSample> LightFieldCamera::SampleExitPupil(P
     return ExitPupilSample{pPupil, pdf};
 }
 
+PBRT_CPU_GPU pstd::optional<ExitPupilSample> LightFieldCamera::SampleMicroLens(Point2f pFilm,
+                                                                 Point2f uLens) const {
+    // Generate sample point inside exit pupil bound
+    Point2f pLens = microlensesBounds.Lerp(uLens);
+    Float pdf = 1 / microlensesBounds.Area();
+
+    Point3f pPupil(pLens.x, pLens.y, microlensFocalLength - halfMicrolensThickness);
+    return ExitPupilSample{pPupil, pdf};
+}
+
 PBRT_CPU_GPU pstd::optional<CameraRay> LightFieldCamera::GenerateRay(CameraSample sample,
                                                        SampledWavelengths &lambda) const {
     // Find point on film, _pFilm_, corresponding to _sample.pFilm_
@@ -1873,6 +1885,9 @@ PBRT_CPU_GPU pstd::optional<CameraRay> LightFieldCamera::GenerateRay(CameraSampl
     // Trace ray from _pFilm_ through lens system
     pstd::optional<ExitPupilSample> eps =
         SampleExitPupil(Point2f(pFilm.x, pFilm.y), sample.pLens);
+    // pstd::optional<ExitPupilSample> eps =
+    //     SampleMicroLens(Point2f(pFilm.x, pFilm.y), sample.pLens);
+    
     if (!eps)
         return {};
     Ray rFilm(pFilm, eps->pPupil - pFilm);

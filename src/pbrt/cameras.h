@@ -727,6 +727,9 @@ class LightFieldCamera : public CameraBase {
     PBRT_CPU_GPU
     pstd::optional<ExitPupilSample> SampleExitPupil(Point2f pFilm, Point2f uLens) const;
 
+    PBRT_CPU_GPU
+    pstd::optional<ExitPupilSample> SampleMicroLens(Point2f pFilm, Point2f uLens) const;
+
     void TestExitPupilBounds() const;
 
     // LightFieldCamera Private Members
