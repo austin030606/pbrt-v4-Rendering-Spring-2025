@@ -1489,28 +1489,36 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
     elementInterfaces.back().thickness = FocusThickLens(focusDistance);
 
     // Set up microlenses
-    Float microlensEta = 1.5;
-    Float microlensFocalLength = 0.5 / 1000;
-    Float fNumber = mainLenseApertureDiameter / focalLength;
-    Float microlensDiameter = fNumber * microlensFocalLength;
-    Float microlensRadius = 2 * microlensFocalLength * (microlensEta - 1);
-    LOG_VERBOSE("fNumber: %f", fNumber);
-    LOG_VERBOSE("microlensDiameter: %f", microlensDiameter);
-    LOG_VERBOSE("microlensRadius: %f", microlensRadius);
-    Float halfMicrolensThickness = microlensRadius - std::sqrt(Sqr(microlensRadius) - Sqr(microlensDiameter*0.5));
-    LOG_VERBOSE("halfMicrolensThickness: %f", halfMicrolensThickness);
-
-    // single microlens in the center
-    elementInterfaces.back().thickness -= halfMicrolensThickness;
-    elementInterfaces.push_back(
-            {microlensRadius, 2 * halfMicrolensThickness, microlensEta, microlensDiameter / 2});
+    microlensEta = 1.5;
+    microlensFocalLength = 0.5 / 1000;
     // image-side f-number, 
     // which is the diameter divided by the separation between the 
     // principal plane of the main lens and the microlens plane
-    
-    elementInterfaces.push_back(
-            {-microlensRadius, microlensFocalLength, 1.0, microlensDiameter / 2});
+    fNumber = mainLenseApertureDiameter / (mainLensFocalLength);
+    microlensDiameter = fNumber * microlensFocalLength;
+    microlensRadius = 2 * microlensFocalLength * (microlensEta - 1);
+    halfMicrolensThickness = microlensRadius - std::sqrt(Sqr(microlensRadius) - Sqr(microlensDiameter*0.5));
+    LOG_VERBOSE("fNumber: %f", fNumber);
+    LOG_VERBOSE("microlensDiameter: %f", microlensDiameter);
+    LOG_VERBOSE("microlensRadius: %f", microlensRadius);
+    LOG_VERBOSE("halfMicrolensThickness: %f", halfMicrolensThickness);
 
+    if (false) {
+        microlensesNumberPerAxis = 1;
+        // single microlens in the center
+        elementInterfaces.back().thickness -= halfMicrolensThickness;
+        elementInterfaces.push_back(
+            {microlensRadius, 2 * halfMicrolensThickness, microlensEta, microlensDiameter / 2});
+            
+            elementInterfaces.push_back(
+                {-microlensRadius, microlensFocalLength - halfMicrolensThickness, 1.0, microlensDiameter / 2});
+    } else {
+        microlensesNumberPerAxis = 321;
+        Float sideLength = microlensDiameter * microlensesNumberPerAxis * 0.5 * 2;
+        microlensesBounds.pMin = Point2f(-sideLength, -sideLength);
+        microlensesBounds.pMax = Point2f(sideLength, sideLength);
+    }
+                
     // Compute exit pupil bounds at sampled points on the film
     int nSamples = 64;
     exitPupilBounds.resize(nSamples);
@@ -1524,12 +1532,19 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
     FindMinimumDifferentials(this);
 }
 
-PBRT_CPU_GPU Float LightFieldCamera::TraceLensesFromFilm(const Ray &rCamera, Ray *rOut) const {
+PBRT_CPU_GPU Float LightFieldCamera::TraceLensesFromFilm(const Ray &rCamera, Ray *rOut, bool traceMicrolenses) const {
     Float elementZ = 0, weight = 1;
     // Transform _rCamera_ from camera to lens system space
     Ray rLens(Point3f(rCamera.o.x, rCamera.o.y, -rCamera.o.z),
               Vector3f(rCamera.d.x, rCamera.d.y, -rCamera.d.z), rCamera.time);
 
+    if (traceMicrolenses) {
+        if (!TraceMicrolensesFromFilm(rLens)) {
+            return 0;
+        } else {
+            elementZ = -(microlensFocalLength + halfMicrolensThickness);
+        }
+    }
     for (int i = elementInterfaces.size() - 1; i >= 0; --i) {
         const LensElementInterface &element = elementInterfaces[i];
         // Update ray from film accounting for interaction with _element_
@@ -1590,6 +1605,159 @@ PBRT_CPU_GPU Float LightFieldCamera::TraceLensesFromFilm(const Ray &rCamera, Ray
     return weight;
 }
 
+PBRT_CPU_GPU bool LightFieldCamera::TraceMicrolensesFromFilm(Ray &rLens) const {
+    Float tz = (-(microlensFocalLength - halfMicrolensThickness)) / rLens.d.z;
+    Point3f p1 = rLens(tz);
+    int halfCount = microlensesNumberPerAxis / 2;
+    int boxIdxX = static_cast<int>(std::abs(p1.x) / microlensDiameter) * ((p1.x >= 0)?1:-1),
+        boxIdxY = static_cast<int>(std::abs(p1.y) / microlensDiameter) * ((p1.y >= 0)?1:-1);
+    Float sphereHitCenterX, tHitX, sphereHitCenterY, tHitY;
+    Float sphereCenterZ = -(microlensFocalLength - halfMicrolensThickness + microlensRadius); 
+    if (-halfCount < boxIdxX && boxIdxX < halfCount) {
+        // sphere center 1: 
+        //     boxIdxX * microlensDiameter
+        // sphere center 2:
+        //     (boxIdxX + 1) * microlensDiameter if p1.x >= 0
+        //     (boxIdxX - 1) * microlensDiameter if p1.x < 0
+        Float sphereCenterX1 = boxIdxX * microlensDiameter,
+              sphereCenterX2 = (boxIdxX + ((p1.x >= 0)?1:-1)) * microlensDiameter;
+        Float t1 = -1, t2 = -1;
+        bool intersect1 = IntersectCircle(microlensRadius, sphereCenterX1, sphereCenterZ, rLens.o.x, rLens.o.z, rLens.d.x, rLens.d.z, &t1),
+             intersect2 = IntersectCircle(microlensRadius, sphereCenterX2, sphereCenterZ, rLens.o.x, rLens.o.z, rLens.d.x, rLens.d.z, &t2);
+        if (intersect1 && intersect2) {
+            if (t2 < t1) {
+                sphereHitCenterX = sphereCenterX2;
+                tHitX = t2;
+            } else {
+                sphereHitCenterX = sphereCenterX1;
+                tHitX = t1;
+            }
+        } else if (intersect2) {
+            sphereHitCenterX = sphereCenterX2;
+            tHitX = t2;
+        } else if (intersect1) {
+            sphereHitCenterX = sphereCenterX1;
+            tHitX = t1;
+        }
+    } else {
+        // sphere center 1: 
+        //     sign * halfCount * microlensDiameter
+        Float sphereCenterX1 = ((p1.x >= 0)?1:-1) * halfCount * microlensDiameter;
+        Float t1 = -1;
+        bool intersect1 = IntersectCircle(microlensRadius, sphereCenterX1, sphereCenterZ, rLens.o.x, rLens.o.z, rLens.d.x, rLens.d.z, &t1);
+
+        if (intersect1) {
+            sphereHitCenterX = sphereCenterX1;
+            tHitX = t1;
+        } else {
+            return false;
+        }
+    }
+    if (rLens(tHitX).z < -microlensFocalLength) {
+        return false;
+    }
+    if (-halfCount < boxIdxY && boxIdxY < halfCount) {
+        // sphere center 1: 
+        //     boxIdxY * microlensDiameter
+        // sphere center 2:
+        //     (boxIdxY + 1) * microlensDiameter if p1.y >= 0
+        //     (boxIdxY - 1) * microlensDiameter if p1.y < 0
+        Float sphereCenterY1 = boxIdxY * microlensDiameter,
+              sphereCenterY2 = (boxIdxY + ((p1.y >= 0)?1:-1)) * microlensDiameter;
+        Float t1 = -1, t2 = -1;
+        bool intersect1 = IntersectCircle(microlensRadius, sphereCenterY1, sphereCenterZ, rLens.o.y, rLens.o.z, rLens.d.y, rLens.d.z, &t1),
+             intersect2 = IntersectCircle(microlensRadius, sphereCenterY2, sphereCenterZ, rLens.o.y, rLens.o.z, rLens.d.y, rLens.d.z, &t2);
+    
+        if (intersect1 && intersect2) {
+            if (t2 < t1) {
+                sphereHitCenterY = sphereCenterY2;
+                tHitY = t2;
+            } else {
+                sphereHitCenterY = sphereCenterY1;
+                tHitY = t1;
+            }
+        } else if (intersect2) {
+            sphereHitCenterY = sphereCenterY2;
+            tHitY = t2;
+        } else if (intersect1) {
+            sphereHitCenterY = sphereCenterY1;
+            tHitY = t1;
+        }
+    } else {
+        // sphere center 1: 
+        //     boxIdxY * microlensDiameter
+        Float sphereCenterY1 = ((p1.y >= 0)?1:-1) * halfCount * microlensDiameter;
+        Float t1 = -1;
+        bool intersect1 = IntersectCircle(microlensRadius, sphereCenterY1, sphereCenterZ, rLens.o.y, rLens.o.z, rLens.d.y, rLens.d.z, &t1);
+
+        if (intersect1) {
+            sphereHitCenterY = sphereCenterY1;
+            tHitY = t1;
+        } else {
+            return false;
+        }
+    }
+    if (rLens(tHitY).z < -microlensFocalLength) {
+        return false;
+    }
+    // transform ray to intersecting microlens space and perform intersection
+    Ray rMicrolens(Point3f(rLens.o.x - sphereHitCenterX, rLens.o.y - sphereHitCenterY, rLens.o.z),
+              Vector3f(rLens.d.x, rLens.d.y, rLens.d.z), rLens.time);
+
+    
+
+    // rear hit
+    // Compute intersection of ray with lens element
+    Float t;
+    Normal3f n;
+    Float radius = -microlensRadius;
+    Float zCenter = -(microlensFocalLength - halfMicrolensThickness + microlensRadius);
+    if (!IntersectSphericalElement(radius, zCenter, rMicrolens, &t, &n))
+        return false;
+    DCHECK_GE(t, 0);
+
+    // Test intersection point against element aperture
+    Point3f pHit = rMicrolens(t);
+    // Check intersection point against spherical aperture
+    if (Sqr(pHit.x) + Sqr(pHit.y) > Sqr(microlensDiameter * 0.5))
+        return false;
+    rMicrolens.o = pHit;
+
+    // Update ray path for element interface interaction
+    Vector3f w;
+    Float eta_i = 1;
+    Float eta_t = microlensEta;
+    if (!Refract(Normalize(-rMicrolens.d), n, eta_t / eta_i, nullptr, &w))
+        return false;
+    rMicrolens.d = w;
+
+    // front hit
+    // Compute intersection of ray with lens element
+    radius = microlensRadius;
+    zCenter = -(microlensFocalLength + halfMicrolensThickness) + microlensRadius;
+    if (!IntersectSphericalElement(radius, zCenter, rMicrolens, &t, &n))
+        return false;
+    DCHECK_GE(t, 0);
+
+    // Test intersection point against element aperture
+    pHit = rMicrolens(t);
+    // Check intersection point against spherical aperture
+    if (Sqr(pHit.x) + Sqr(pHit.y) > Sqr(microlensDiameter * 0.5))
+        return false;
+    rMicrolens.o = pHit;
+
+    // Update ray path for element interface interaction
+    eta_i = microlensEta;
+    eta_t = 1;
+    if (!Refract(Normalize(-rMicrolens.d), n, eta_t / eta_i, nullptr, &w))
+        return false;
+    rMicrolens.d = w;
+
+    rLens.d = rMicrolens.d;
+    rLens.o = Point3f(rMicrolens.o.x + sphereHitCenterX, rMicrolens.o.y + sphereHitCenterY, rMicrolens.o.z);
+    return true;
+}
+
 void LightFieldCamera::ComputeCardinalPoints(Ray rIn, Ray rOut, Float *pz, Float *fz) {
     Float tf = -rOut.o.x / rOut.d.x;
     *fz = -rOut(tf).z;
@@ -1611,7 +1779,7 @@ void LightFieldCamera::ComputeThickLensApproximation(Float pz[2], Float fz[2]) c
 
     // Compute cardinal points for scene side of lens system
     rFilm = Ray(Point3f(x, 0, LensRearZ() - 1), Vector3f(0, 0, 1));
-    if (TraceLensesFromFilm(rFilm, &rScene) == 0)
+    if (TraceLensesFromFilm(rFilm, &rScene, false) == 0)
         ErrorExit("Unable to trace ray from film to scene for thick lens "
                   "approximation. Is aperture stop extremely small?");
     ComputeCardinalPoints(rFilm, rScene, &pz[1], &fz[1]);
@@ -1632,7 +1800,7 @@ Float LightFieldCamera::FocusThickLens(Float focusDistance) {
                   " is too short for a given lenses configuration",
                   focusDistance);
     Float delta = (pz[1] - z + pz[0] - std::sqrt(c)) / 2;
-    focalLength = f;
+    mainLensFocalLength = f;
     return elementInterfaces.back().thickness + delta;
 }
 
@@ -1655,7 +1823,7 @@ Bounds2f LightFieldCamera::BoundExitPupil(Float filmX0, Float filmX1) const {
 
         // Expand pupil bounds if ray makes it through the lens system
         if (!Inside(Point2f(pRear.x, pRear.y), pupilBounds) &&
-            TraceLensesFromFilm(Ray(pFilm, pRear - pFilm), nullptr))
+            TraceLensesFromFilm(Ray(pFilm, pRear - pFilm), nullptr, false))
             pupilBounds = Union(pupilBounds, Point2f(pRear.x, pRear.y));
     }
 
@@ -1668,7 +1836,7 @@ Bounds2f LightFieldCamera::BoundExitPupil(Float filmX0, Float filmX1) const {
     // Expand bounds to account for sample spacing
     pupilBounds =
         Expand(pupilBounds, 2 * Length(projRearBounds.Diagonal()) / std::sqrt(nSamples));
-
+    LOG_VERBOSE("pupil bounds: %s", pupilBounds.ToString());
     return pupilBounds;
 }
 
@@ -1709,7 +1877,7 @@ PBRT_CPU_GPU pstd::optional<CameraRay> LightFieldCamera::GenerateRay(CameraSampl
         return {};
     Ray rFilm(pFilm, eps->pPupil - pFilm);
     Ray ray;
-    Float weight = TraceLensesFromFilm(rFilm, &ray);
+    Float weight = TraceLensesFromFilm(rFilm, &ray, true);
     if (weight == 0)
         return {};
 
@@ -1866,7 +2034,7 @@ void LightFieldCamera::DrawRayPathFromFilm(const Ray &r, bool arrow,
     static const Transform LensFromCamera = Scale(1, 1, -1);
     Ray ray = LensFromCamera(r);
     printf("{ ");
-    if (TraceLensesFromFilm(r, nullptr) == 0) {
+    if (TraceLensesFromFilm(r, nullptr, true) == 0) {
         printf("Dashed, RGBColor[.8, .5, .5]");
     } else
         printf("RGBColor[.5, .5, .8]");
@@ -2007,7 +2175,7 @@ void LightFieldCamera::RenderExitPupil(Float sx, Float sy, const char *filename)
 
             if (lx * lx + ly * ly > RearElementRadius() * RearElementRadius())
                 image.SetChannel({x, y}, 0, 1.);
-            else if (TraceLensesFromFilm(Ray(pFilm, pRear - pFilm), nullptr))
+            else if (TraceLensesFromFilm(Ray(pFilm, pRear - pFilm), nullptr, true))
                 image.SetChannel({x, y}, 0, 0.5);
             else
                 image.SetChannel({x, y}, 0, 0.);
@@ -2041,7 +2209,7 @@ void LightFieldCamera::TestExitPupilBounds() const {
 
         Ray testRay(pFilm, Point3f(pd.x, pd.y, 0.f) - pFilm);
         Ray testOut;
-        if (!TraceLensesFromFilm(testRay, &testOut))
+        if (!TraceLensesFromFilm(testRay, &testOut, true))
             continue;
 
         if (!Inside(pd, pupilBounds)) {

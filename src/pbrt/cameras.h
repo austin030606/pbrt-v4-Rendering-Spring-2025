@@ -655,7 +655,10 @@ class LightFieldCamera : public CameraBase {
     Float RearElementRadius() const { return elementInterfaces.back().apertureRadius; }
 
     PBRT_CPU_GPU
-    Float TraceLensesFromFilm(const Ray &rCamera, Ray *rOut) const;
+    Float TraceLensesFromFilm(const Ray &rCamera, Ray *rOut, bool traceMicrolenses) const;
+
+    PBRT_CPU_GPU
+    bool TraceMicrolensesFromFilm(Ray &rLens) const;
 
     PBRT_CPU_GPU
     static bool IntersectSphericalElement(Float radius, Float zCenter, const Ray &ray,
@@ -683,6 +686,32 @@ class LightFieldCamera : public CameraBase {
     }
 
     PBRT_CPU_GPU
+    static bool IntersectCircle(Float radius, Float xCenter, Float yCenter, 
+                                Float rayOriginX, Float rayOriginY,
+                                Float rayDirectionX, Float rayDirectionY,
+                                          Float *t) {
+        // Compute _t0_ and _t1_ for ray--element intersection
+        Point2f o = Point2f(rayOriginX, rayOriginY) - Vector2f(xCenter, yCenter);
+        Float A = rayDirectionX * rayDirectionX + rayDirectionY * rayDirectionY;
+        Float B = 2 * (rayDirectionX * o.x + rayDirectionY * o.y);
+        Float C = o.x * o.x + o.y * o.y - radius * radius;
+        Float t0, t1;
+        if (!Quadratic(A, B, C, &t0, &t1)) {
+            return false;
+        }
+        
+        *t = std::min(t0, t1);
+        // LOG_VERBOSE("radius: %f", radius);
+        // LOG_VERBOSE("sphere origin: %f %f", xCenter, yCenter);
+        // LOG_VERBOSE("origin: %f %f", rayOriginX, rayOriginY);
+        // LOG_VERBOSE("direction: %f %f", rayDirectionX, rayDirectionY);
+        // LOG_VERBOSE("ts: %f %f", t0, t1);
+        if (*t < 0)
+            return false;
+        return true;
+    }
+
+    PBRT_CPU_GPU
     Float TraceLensesFromScene(const Ray &rCamera, Ray *rOut) const;
 
     void DrawLensSystem() const;
@@ -705,7 +734,15 @@ class LightFieldCamera : public CameraBase {
     pstd::vector<LensElementInterface> elementInterfaces;
     Image apertureImage;
     pstd::vector<Bounds2f> exitPupilBounds;
-    Float focalLength;
+    Float mainLensFocalLength;
+    Float fNumber;
+    Float microlensEta;
+    Float microlensFocalLength;
+    Float microlensDiameter;
+    Float microlensRadius;
+    Float halfMicrolensThickness;
+    int microlensesNumberPerAxis;
+    Bounds2f microlensesBounds;
 };
 
 PBRT_CPU_GPU inline pstd::optional<CameraRay> Camera::GenerateRay(CameraSample sample,
