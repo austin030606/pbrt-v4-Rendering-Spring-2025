@@ -22,6 +22,7 @@ struct CameraSample {
     Float time = 0;
     Float filterWeight = 1;
     std::string ToString() const;
+    Point2f pLensOffset;
 };
 
 // Sampler Declarations

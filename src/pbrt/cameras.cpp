@@ -1519,19 +1519,47 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
                 {-microlensRadius, microlensFocalLength - halfMicrolensThickness, 1.0, microlensDiameter / 2});
     } else {
         microlensesNumberPerAxis = (microlensN%2==0)?microlensN+1:microlensN;
-        Float sideLength = microlensDiameter * microlensesNumberPerAxis * 0.5 * 1.25;
+        Float sideLength = microlensDiameter * microlensesNumberPerAxis * 0.5 + microlensDiameter;
         microlensesBounds.pMin = Point2f(-sideLength, -sideLength);
         microlensesBounds.pMax = Point2f(sideLength, sideLength);
     }
                 
     // Compute exit pupil bounds at sampled points on the film
-    int nSamples = 64;
+    int nSamples = 128;
     exitPupilBounds.resize(nSamples);
     ParallelFor(0, nSamples, [&](int i) {
-        Float r0 = (Float)i / nSamples * film.Diagonal() / 2;
-        Float r1 = (Float)(i + 1) / nSamples * film.Diagonal() / 2;
+        Float r0 = (Float)i / nSamples * film.Diagonal();
+        Float r1 = (Float)(i + 1) / nSamples * film.Diagonal();
         exitPupilBounds[i] = BoundExitPupil(r0, r1);
     });
+
+    // Compute exit pupil bounds at sampled points on the film
+    microlensesExitPupilBounds.resize((int)((microlensesNumberPerAxis * microlensesNumberPerAxis - 1)/8),
+                                        pstd::vector<pstd::vector<Bounds2f> >(nSamples, pstd::vector<Bounds2f>(nSamples)));
+    // axisMicrolensesExitPupilBounds.resize((int)((microlensesNumberPerAxis + 1)/2), pstd::vector<Bounds2f>(nSamples));
+    // exitPupilBounds.resize(nSamples);
+    // for (int i = 1; i < (int)((microlensesNumberPerAxis + 1)/2); ++i) {
+    //     for (int j = 1; j <= i; ++j) {
+    //         LOG_VERBOSE("microlens exitpupil ij: %d, %d", i, j);
+    //         int index = (i * (i - 1)) / 2 + j - 1;
+    //         ParallelFor(0, nSamples, [&](int k) {
+    //             Float r0 = (Float)k / nSamples * film.Diagonal() * 2 - film.Diagonal();
+    //             Float r1 = (Float)(k + 1) / nSamples * film.Diagonal() * 2 - film.Diagonal();
+    //             for (int l = 0; l < nSamples; ++l) {
+    //                 Float t0 = (Float)k / nSamples * film.Diagonal() * 2 - film.Diagonal();
+    //                 Float t1 = (Float)(k + 1) / nSamples * film.Diagonal() * 2 - film.Diagonal();
+    //                 microlensesExitPupilBounds[index][k][l] = BoundMicrolensExitPupil(r0, r1, t0, t1, j, i);
+    //             }
+    //         });
+    //     }    
+    // }
+    // for (int i = 0; i < (int)((microlensesNumberPerAxis + 1)/2); ++i) {
+    //     ParallelFor(0, nSamples, [&](int k) {
+    //         Float r0 = (Float)k / nSamples * film.Diagonal();
+    //         Float r1 = (Float)(k + 1) / nSamples * film.Diagonal();
+    //         triMicrolensesExitPupilBounds[i][k] = BoundMicrolensExitPupil(r0, r1, 0, i);
+    //     });    
+    // }
 
     // Compute minimum differentials for _LightFieldCamera_
     FindMinimumDifferentials(this);
@@ -1720,7 +1748,9 @@ PBRT_CPU_GPU bool LightFieldCamera::TraceMicrolensesFromFilm(Ray &rLens) const {
     if (!IntersectSphericalElement(radius, zCenter, rMicrolens, &t, &n))
         return false;
     DCHECK_GE(t, 0);
-
+    if (rMicrolens(tHitY).z < -microlensFocalLength) {
+        return false;
+    }
     // Test intersection point against element aperture
     Point3f pHit = rMicrolens(t);
     // Check intersection point against spherical aperture
@@ -1744,6 +1774,9 @@ PBRT_CPU_GPU bool LightFieldCamera::TraceMicrolensesFromFilm(Ray &rLens) const {
         return false;
     DCHECK_GE(t, 0);
 
+    if (rMicrolens(tHitY).z > -microlensFocalLength) {
+        return false;
+    }
     // Test intersection point against element aperture
     pHit = rMicrolens(t);
     // Check intersection point against spherical aperture
@@ -1840,6 +1873,57 @@ Bounds2f LightFieldCamera::BoundExitPupil(Float filmX0, Float filmX1) const {
 
     // Expand bounds to account for sample spacing
     pupilBounds =
+        Expand(pupilBounds, 25 * Length(projRearBounds.Diagonal()) / std::sqrt(nSamples));
+    LOG_VERBOSE("pupil bounds: %s", pupilBounds.ToString());
+    return pupilBounds;
+}
+
+Bounds2f LightFieldCamera::BoundMicrolensExitPupil(Float filmX0, Float filmX1, Float filmY0, Float filmY1, int idxX, int idxY) const {
+    // int index = (idxY * (idxY - 1)) / 2 + idxX - 1;
+    Bounds2f pupilBounds;
+    // Sample a collection of points on the rear lens to find exit pupil
+    const int nSamples = 1024;
+    Point2f microlensCenter = Point2f(idxX * microlensDiameter, idxY * microlensDiameter);
+    Vector2f unit_x = Normalize(Vector2f(-microlensCenter));
+    Vector2f unit_y = Vector2f(-unit_x.y, unit_x.x);
+    // Compute bounding box of projection of rear element on sampling plane
+    Bounds2f projRearBounds;
+    if (idxX < (microlensesNumberPerAxis - 1)/2 && idxX < (microlensesNumberPerAxis - 1)/2) {
+        projRearBounds.pMin = microlensCenter + Vector2f(-microlensDiameter, -microlensDiameter);
+        projRearBounds.pMin = microlensCenter + Vector2f(microlensDiameter, microlensDiameter);
+    } else {
+        projRearBounds.pMin = microlensCenter + Vector2f(-microlensDiameter*2, -microlensDiameter*2);
+        projRearBounds.pMin = microlensCenter + Vector2f(microlensDiameter*2, microlensDiameter*2);
+    }
+
+    for (int i = 0; i < nSamples; ++i) {
+        for (int j = 0; j < nSamples; ++j) {
+            // Find location of sample points on $x$ half circle and rear lens element
+            Float x = Lerp((i + 0.5f) / nSamples, filmX0, filmX1);
+            Float y = Lerp((j + 0.5f) / nSamples, filmY0, filmY0);
+
+            Point2f pFilm2D = microlensCenter + x * unit_x + y * unit_y;
+            Point3f pFilm = Point3f(pFilm2D.x, pFilm2D.y, 0);
+            Float u[2] = {RadicalInverse(0, i), RadicalInverse(1, i)};
+            Point3f pRear(Lerp(u[0], projRearBounds.pMin.x, projRearBounds.pMax.x),
+                        Lerp(u[1], projRearBounds.pMin.y, projRearBounds.pMax.y),
+                        microlensFocalLength - halfMicrolensThickness);
+
+            // Expand pupil bounds if ray makes it through the lens system
+            if (!Inside(Point2f(pRear.x, pRear.y), pupilBounds) &&
+                TraceLensesFromFilm(Ray(pFilm, pRear - pFilm), nullptr, true))
+                pupilBounds = Union(pupilBounds, Point2f(pRear.x, pRear.y));
+        }
+    }
+
+    // Return degenerate bounds if no rays made it through the lens system
+    if (pupilBounds.IsDegenerate()) {
+        LOG_VERBOSE("Unable to find exit pupil in x = [%f,%f] on film.", filmX0, filmX1);
+        return pupilBounds;
+    }
+
+    // Expand bounds to account for sample spacing
+    pupilBounds =
         Expand(pupilBounds, 2 * Length(projRearBounds.Diagonal()) / std::sqrt(nSamples));
     LOG_VERBOSE("pupil bounds: %s", pupilBounds.ToString());
     return pupilBounds;
@@ -1849,9 +1933,15 @@ PBRT_CPU_GPU pstd::optional<ExitPupilSample> LightFieldCamera::SampleExitPupil(P
                                                                  Point2f uLens) const {
     // Find exit pupil bound for sample distance from film center
     Float rFilm = std::sqrt(Sqr(pFilm.x) + Sqr(pFilm.y));
-    int rIndex = rFilm / (film.Diagonal() / 2) * exitPupilBounds.size();
+    int rIndex = rFilm / (film.Diagonal()) * exitPupilBounds.size();
     rIndex = std::min<int>(exitPupilBounds.size() - 1, rIndex);
     Bounds2f pupilBounds = exitPupilBounds[rIndex];
+    int r = 10;
+    for (int i = rIndex - r; i <= rIndex + r; ++i) {
+        if (i >= 0 && i < exitPupilBounds.size()) {
+            pupilBounds = Union(pupilBounds, exitPupilBounds[i]);
+        }
+    }
     if (pupilBounds.IsDegenerate())
         return {};
 
@@ -1867,11 +1957,39 @@ PBRT_CPU_GPU pstd::optional<ExitPupilSample> LightFieldCamera::SampleExitPupil(P
     return ExitPupilSample{pPupil, pdf};
 }
 
-PBRT_CPU_GPU pstd::optional<ExitPupilSample> LightFieldCamera::SampleMicroLens(Point2f pFilm,
-                                                                 Point2f uLens) const {
+PBRT_CPU_GPU pstd::optional<ExitPupilSample> LightFieldCamera::SampleMicroLensExitPupil(Point2f pFilm,
+                                                                 Point2f uLens, Point2f uLensOffset) const {
     // Generate sample point inside exit pupil bound
-    Point2f pLens = microlensesBounds.Lerp(uLens);
-    Float pdf = 1 / microlensesBounds.Area();
+    // int x = std::abs((int)(uLensOffset.x * microlensesNumberPerAxis - microlensesNumberPerAxis / 2)) * (uLensOffset.x > 0.5?1:-1),
+    //     y = std::abs((int)(uLensOffset.y * microlensesNumberPerAxis - microlensesNumberPerAxis / 2)) * (uLensOffset.x > 0.5?1:-1);
+    
+    // // Find exit pupil bound for sample distance from film center
+    // Float rFilm = std::sqrt(Sqr(x * microlensDiameter) + Sqr(x * microlensDiameter));
+    // int rIndex = rFilm / (film.Diagonal() / 2) * exitPupilBounds.size();
+    // rIndex = std::min<int>(exitPupilBounds.size() - 1, rIndex);
+    // Bounds2f pupilBounds = exitPupilBounds[rIndex];
+    // if (pupilBounds.IsDegenerate())
+    //     return {};
+
+    // // Generate sample point inside exit pupil bound
+    // Point2f pLens = pupilBounds.Lerp(uLens);
+    // Float pdf = 1 / pupilBounds.Area();
+
+    // // Return sample point rotated by angle of _pFilm_ with $+x$ axis
+    // Float sinTheta = (rFilm != 0) ? pFilm.y / rFilm : 0;
+    // Float cosTheta = (rFilm != 0) ? pFilm.x / rFilm : 1;
+    // Point3f pPupil(cosTheta * pLens.x - sinTheta * pLens.y,
+    //                sinTheta * pLens.x + cosTheta * pLens.y, LensRearZ());
+    Float rFilm = std::sqrt(Sqr(pFilm.x) + Sqr(pFilm.y));
+    int rIndex = rFilm / (film.Diagonal() / 2) * exitPupilBounds.size();
+    // microlensDiameter / ((physicalExtent.pMax.x - physicalExtent.pMin.x) / film.FullResolution().x)
+    Bounds2f sampleBound;
+    int x = pFilm.x * ((physicalExtent.pMax.x - physicalExtent.pMin.x) / film.FullResolution().x),
+        y = pFilm.x * ((physicalExtent.pMax.x - physicalExtent.pMin.x) / film.FullResolution().x);
+    sampleBound.pMin = Point2f(x, y) - Vector2f(microlensDiameter, microlensDiameter);
+    sampleBound.pMax = Point2f(x, y) + Vector2f(microlensDiameter, microlensDiameter);
+    Point2f pLens = sampleBound.Lerp(uLens);
+    Float pdf = 1 / sampleBound.Area();
 
     Point3f pPupil(pLens.x, pLens.y, microlensFocalLength - halfMicrolensThickness);
     return ExitPupilSample{pPupil, pdf};
@@ -1885,7 +2003,7 @@ PBRT_CPU_GPU pstd::optional<CameraRay> LightFieldCamera::GenerateRay(CameraSampl
     Point2f pFilm2 = physicalExtent.Lerp(s);
     Point3f pFilm(-pFilm2.x, pFilm2.y, 0);
     if (!(*printedPixelCount)) {
-        LOG_VERBOSE("microlens diameter pixel count: %d", int(std::round(microlensDiameter / ((physicalExtent.pMax.x - physicalExtent.pMin.x) / film.FullResolution().x))));
+        LOG_VERBOSE("microlens diameter pixel count: %f", microlensDiameter / ((physicalExtent.pMax.x - physicalExtent.pMin.x) / film.FullResolution().x));
         *printedPixelCount = true;
     }
 
@@ -1893,7 +2011,7 @@ PBRT_CPU_GPU pstd::optional<CameraRay> LightFieldCamera::GenerateRay(CameraSampl
     pstd::optional<ExitPupilSample> eps =
         SampleExitPupil(Point2f(pFilm.x, pFilm.y), sample.pLens);
     // pstd::optional<ExitPupilSample> eps =
-    //     SampleMicroLens(Point2f(pFilm.x, pFilm.y), sample.pLens);
+    //     SampleMicroLensExitPupil(Point2f(pFilm.x, pFilm.y), sample.pLens, sample.pLensOffset);
     
     if (!eps)
         return {};

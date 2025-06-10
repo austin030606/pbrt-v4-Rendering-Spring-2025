@@ -803,6 +803,7 @@ inline PBRT_CPU_GPU CameraSample GetCameraSample(S sampler, Point2i pPixel,
     cs.time = sampler.Get1D();
     cs.pLens = sampler.Get2D();
     cs.filterWeight = fs.weight;
+    cs.pLensOffset = sampler.Get2D();
 
     if (GetOptions().disablePixelJitter) {
         cs.pFilm = pPixel + Vector2f(0.5f, 0.5f);

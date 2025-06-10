@@ -722,13 +722,14 @@ class LightFieldCamera : public CameraBase {
     void ComputeThickLensApproximation(Float pz[2], Float f[2]) const;
     Float FocusThickLens(Float focusDistance);
     Bounds2f BoundExitPupil(Float filmX0, Float filmX1) const;
+    Bounds2f BoundMicrolensExitPupil(Float filmX0, Float filmX1, Float filmTheta0, Float filmTheta1, int idxX, int idxY) const;
     void RenderExitPupil(Float sx, Float sy, const char *filename) const;
 
     PBRT_CPU_GPU
     pstd::optional<ExitPupilSample> SampleExitPupil(Point2f pFilm, Point2f uLens) const;
 
     PBRT_CPU_GPU
-    pstd::optional<ExitPupilSample> SampleMicroLens(Point2f pFilm, Point2f uLens) const;
+    pstd::optional<ExitPupilSample> SampleMicroLensExitPupil(Point2f pFilm, Point2f uLens, Point2f uLensOffset) const;
 
     void TestExitPupilBounds() const;
 
@@ -737,6 +738,7 @@ class LightFieldCamera : public CameraBase {
     pstd::vector<LensElementInterface> elementInterfaces;
     Image apertureImage;
     pstd::vector<Bounds2f> exitPupilBounds;
+    std::vector<pstd::vector<pstd::vector<Bounds2f> > > microlensesExitPupilBounds;
     Float mainLensFocalLength;
     Float fNumber;
     Float microlensEta;
