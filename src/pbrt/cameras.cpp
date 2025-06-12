@@ -1448,7 +1448,7 @@ RealisticCamera *RealisticCamera::Create(const ParameterDictionary &parameters,
 LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
                                  std::vector<Float> &lensParameters, Float focusDistance,
                                  Float setApertureDiameter, Image apertureImage,
-                                 Allocator alloc, Float mlensFocalLength, int microlensN)
+                                 Allocator alloc, Float mlensFocalLength, int microlensN, Float fNumberOffset)
     : CameraBase(baseParameters),
       elementInterfaces(alloc),
       exitPupilBounds(alloc),
@@ -1498,7 +1498,7 @@ LightFieldCamera::LightFieldCamera(CameraBaseParameters baseParameters,
     // which is the diameter divided by the separation between the 
     // principal plane of the main lens and the microlens plane
     fNumber = mainLenseApertureDiameter / (mainLensFocalLength);
-    microlensDiameter = fNumber * microlensFocalLength;
+    microlensDiameter = (fNumber + fNumberOffset) * microlensFocalLength;
     microlensRadius = 2 * microlensFocalLength * (microlensEta - 1);
     halfMicrolensThickness = microlensRadius - std::sqrt(Sqr(microlensRadius) - Sqr(microlensDiameter*0.5));
     LOG_VERBOSE("fNumber: %f", fNumber);
@@ -2390,6 +2390,7 @@ LightFieldCamera *LightFieldCamera::Create(const ParameterDictionary &parameters
     Float focusDistance = parameters.GetOneFloat("focusdistance", 10.0);
     Float microlensFocalLength = parameters.GetOneFloat("microlensFocalLength", 0.5 / 1000);
     int microlensN = parameters.GetOneInt("microlensN", 5);
+    Float fNumberOffset = parameters.GetOneFloat("fNumberOffset", 0.0);
 
     if (lensFile.empty()) {
         Error(loc, "No lens description file supplied!");
@@ -2525,7 +2526,7 @@ LightFieldCamera *LightFieldCamera::Create(const ParameterDictionary &parameters
 
     return alloc.new_object<LightFieldCamera>(cameraBaseParameters, lensParameters,
                                              focusDistance, apertureDiameter,
-                                             std::move(apertureImage), alloc, microlensFocalLength, microlensN);
+                                             std::move(apertureImage), alloc, microlensFocalLength, microlensN, fNumberOffset);
 }
 
 }  // namespace pbrt

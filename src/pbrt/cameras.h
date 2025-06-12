@@ -591,7 +591,7 @@ class LightFieldCamera : public CameraBase {
     // LightFieldCamera Public Methods
     LightFieldCamera(CameraBaseParameters baseParameters,
                     std::vector<Float> &lensParameters, Float focusDistance,
-                    Float apertureDiameter, Image apertureImage, Allocator alloc, Float mlensFocalLength, int microlensN);
+                    Float apertureDiameter, Image apertureImage, Allocator alloc, Float mlensFocalLength, int microlensN, Float fNumberOffset);
 
     static LightFieldCamera *Create(const ParameterDictionary &parameters,
                                    const CameraTransform &cameraTransform, Film film,
